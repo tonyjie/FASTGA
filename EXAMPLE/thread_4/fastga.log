@@ -1,0 +1,56 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4/fastga.log /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP1.fasta.gz
+
+  Total Resources:  0.430u  0.024s  0.456w  99.7%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4/fastga.log -T4 -P/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4 /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP1.1gdb
+
+  Partitioning K-mers via pos-lists into 8 parts
+
+  Resources for phase:  1.242u  0.055s  0.442w  293.8%
+
+  Sorting & output of each part
+
+  Sampled:      64661214 ( 75.0%) kmers/positions
+
+  Resources for phase:  5.526u  1.320s  2.763w  247.8%
+
+  Total Resources:  6.769u  1.375s  3.205w  254.1%  0MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4/fastga.log /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP2.fasta.gz
+
+  Total Resources:  0.426u  0.031s  0.460w  99.4%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4/fastga.log -T4 -P/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4 /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP2.1gdb
+
+  Partitioning K-mers via pos-lists into 8 parts
+
+  Resources for phase:  1.351u  0.075s  0.420w  339.1%
+
+  Sorting & output of each part
+
+  Sampled:      65045862 ( 75.0%) kmers/positions
+
+  Resources for phase:  5.550u  1.282s  2.800w  244.0%
+
+  Total Resources:  6.901u  1.358s  3.221w  256.4%  0MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/FastGA -vk -v -T4 -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4/fastga.log -P/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4 -1:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_4/H1vH2.1aln /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP1.fasta.gz /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP2.fasta.gz
+
+  Using 4 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 51082720, ave. len = 28.5, seeds per genome position = 0.6
+
+  Resources for phase:  3.864u  26.685s  11.296w  270.4%
+
+  Seed sort and alignment search, 8 parts
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:36.215u  1.345s  33.990w  287.0%
+
+  Total Resources:  1:40.082u  28.031s  45.290w  282.9%  0MB
