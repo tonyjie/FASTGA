@@ -1,0 +1,81 @@
+
+  Creating genome data base (GDB) HAP1.1gdb in the current directory
+
+  Total Resources:  0.424u  0.027s  0.454w  99.4%  0MB
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+
+  Partitioning K-mers via pos-lists into 8 parts
+
+  Resources for phase:  1.273u  0.116s  0.295w  471.2%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Outputing part 1      Sorting part 2      Compressing part 2    Outputing part 2      Sorting part 3      Compressing part 3    Outputing part 3      Sorting part 4      Compressing part 4    Outputing part 4      Sorting part 5      Compressing part 5    Outputing part 5      Sorting part 6      Compressing part 6    Outputing part 6      Sorting part 7      Compressing part 7    Outputing part 7      Sorting part 8      Compressing part 8    Outputing part 8      Done                                           
+
+  Sampled:      64661214 ( 75.0%) kmers/positions
+
+  Resources for phase:  6.148u  1.041s  2.083w  345.1%
+
+  Total Resources:  7.422u  1.158s  2.378w  360.8%  0MB
+
+  Creating genome data base (GDB) HAP2.1gdb in the current directory
+
+  Total Resources:  0.425u  0.026s  0.454w  99.5%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+
+  Partitioning K-mers via pos-lists into 8 parts
+
+  Resources for phase:  1.303u  0.104s  0.280w  502.6%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Outputing part 1      Sorting part 2      Compressing part 2    Outputing part 2      Sorting part 3      Compressing part 3    Outputing part 3      Sorting part 4      Compressing part 4    Outputing part 4      Sorting part 5      Compressing part 5    Outputing part 5      Sorting part 6      Compressing part 6    Outputing part 6      Sorting part 7      Compressing part 7    Outputing part 7      Sorting part 8      Compressing part 8    Outputing part 8      Done                                           
+
+  Sampled:      65045862 ( 75.0%) kmers/positions
+
+  Resources for phase:  6.198u  1.136s  2.128w  344.6%
+
+  Total Resources:  7.501u  1.241s  2.409w  362.9%  0MB
+
+  Using 8 threads
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 51082720, ave. len = 28.5, seeds per genome position = 0.6
+
+  Resources for phase:  4.103u  26.291s  8.296w  366.4%
+
+  Starting seed sort and alignment search, 16 parts
+    Loading seeds for part 1      Sorting seeds for part 1      Searching seeds for part 1    Loading seeds for part 2      Sorting seeds for part 2      Searching seeds for part 2    Loading seeds for part 3      Sorting seeds for part 3      Searching seeds for part 3    Loading seeds for part 4      Sorting seeds for part 4      Searching seeds for part 4    Loading seeds for part 5      Sorting seeds for part 5      Searching seeds for part 5    Loading seeds for part 6      Sorting seeds for part 6      Searching seeds for part 6    Loading seeds for part 7      Sorting seeds for part 7      Searching seeds for part 7    Loading seeds for part 8      Sorting seeds for part 8      Searching seeds for part 8    Loading seeds for part 9      Sorting seeds for part 9      Searching seeds for part 9    Loading seeds for part 10      Sorting seeds for part 10      Searching seeds for part 10    Loading seeds for part 11      Sorting seeds for part 11      Searching seeds for part 11    Loading seeds for part 12      Sorting seeds for part 12      Searching seeds for part 12    Loading seeds for part 13      Sorting seeds for part 13      Searching seeds for part 13    Loading seeds for part 14      Sorting seeds for part 14      Searching seeds for part 14    Loading seeds for part 15      Sorting seeds for part 15      Searching seeds for part 15    Loading seeds for part 16      Sorting seeds for part 16      Searching seeds for part 16    Done                        
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:36.449u  1.263s  19.574w  499.2%
+
+  Total Resources:  1:40.554u  27.567s  27.884w  459.5%  0MB
+	Command being timed: "/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/FastGA -vk -1:H1vH2 HAP1 HAP2"
+	User time (seconds): 116.34
+	System time (seconds): 30.05
+	Percent of CPU this job got: 435%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:33.65
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 668716
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 651555
+	Voluntary context switches: 54132
+	Involuntary context switches: 751
+	Swaps: 0
+	File system inputs: 3489744
+	File system outputs: 5311752
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

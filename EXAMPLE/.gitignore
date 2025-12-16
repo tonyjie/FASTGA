@@ -1,0 +1,6 @@
+# intermediate and output files generated
+*.bps
+*.ktab.*
+*.1aln
+*.1gdb
+*.gix 

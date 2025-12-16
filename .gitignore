@@ -1,0 +1,22 @@
+# all binaries generated in the root directory when building
+ALNchain
+ALNplot
+ALNreset
+ALNshow
+ALNtoPAF
+ALNtoPSL
+FAtoGDB
+FastGA
+FastKS
+GDBshow
+GDBstat
+GDBtoFA
+GIXmake
+GIXshow
+GIXrm
+GIXcp
+GIXmv
+ONEalnTEST
+ONEview
+PAFtoALN
+PAFtoPSL
