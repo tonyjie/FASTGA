@@ -3693,8 +3693,55 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
 }
 
 
+// Worker Pool Queue
+typedef struct {
+    uint8 *beg;
+    uint8 *end;
+    int    swide;
+    int    ctg1;
+    int64  jcrnt;
+} AlignJob;
+
+#define QSIZE 100000
+static AlignJob Queue[QSIZE];
+static int q_head = 0, q_tail = 0, q_count = 0;
+static pthread_mutex_t q_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  q_cond_nonempty = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t  q_cond_nonfull  = PTHREAD_COND_INITIALIZER;
+static int active_producers = 0;
+
+static void push_job(AlignJob job) {
+    pthread_mutex_lock(&q_mutex);
+    while (q_count == QSIZE) {
+        pthread_cond_wait(&q_cond_nonfull, &q_mutex);
+    }
+    Queue[q_tail] = job;
+    q_tail = (q_tail + 1) % QSIZE;
+    q_count++;
+    pthread_cond_signal(&q_cond_nonempty);
+    pthread_mutex_unlock(&q_mutex);
+}
+
+static int pop_job(AlignJob *job) {
+    pthread_mutex_lock(&q_mutex);
+    while (q_count == 0) {
+        if (active_producers == 0) {
+            pthread_mutex_unlock(&q_mutex);
+            return 0; 
+        }
+        pthread_cond_wait(&q_cond_nonempty, &q_mutex);
+    }
+    *job = Queue[q_head];
+    q_head = (q_head + 1) % QSIZE;
+    q_count--;
+    pthread_cond_signal(&q_cond_nonfull);
+    pthread_mutex_unlock(&q_mutex);
+    return 1;
+}
+
 typedef struct
-  { int       tid;
+  { int       is_producer;
+    int       tid;
     int       swide;
     int       comp;
     int64    *panel;
@@ -3718,9 +3765,15 @@ static void *search_seeds(void *args)
   int      comp   = parm->comp;
   int64   *panel  = parm->panel;
   uint8   *sarray = parm->sarr;
-  Range   *range  = parm->range;
-  int      beg    = range->beg;
-  int      end    = range->end;
+  Range   *range  = NULL;
+  int      beg    = 0;
+  int      end    = 0;
+
+  if (parm->is_producer) {
+      range = parm->range;
+      beg   = range->beg;
+      end   = range->end;
+  }
   GDB     *gdb1   = &(parm->gdb1);
   GDB     *gdb2   = &(parm->gdb2);
   int      foffs  = swide-JCONT;
@@ -3767,21 +3820,44 @@ static void *search_seeds(void *args)
   pair->nlcov = 0;
   pair->nmemo = 0;
 
-  x = sarray + range->off;
-  for (icrnt = beg; icrnt < end; icrnt++)
-    { e = x + panel[icrnt];
-      if (e > x)
-        { memcpy(_jcrnt,x+foffs,JCONT);
-          b = x;
-          for (x += swide; x < e; x += swide)
-            if (memcmp(_jcrnt,x+foffs,JCONT))
-              { align_contigs(b,x,swide,icrnt,(int) jcrnt,pair);
-                memcpy(_jcrnt,x+foffs,JCONT);
-                b = x;
-              }
-          align_contigs(b,x,swide,icrnt,jcrnt,pair);
+  if (parm->is_producer)
+    { x = sarray + range->off;
+      for (icrnt = beg; icrnt < end; icrnt++)
+        { e = x + panel[icrnt];
+          if (e > x)
+            { memcpy(_jcrnt,x+foffs,JCONT);
+              b = x;
+              for (x += swide; x < e; x += swide)
+                if (memcmp(_jcrnt,x+foffs,JCONT))
+                  { AlignJob job;
+                    job.beg = b;
+                    job.end = x;
+                    job.swide = swide;
+                    job.ctg1 = icrnt;
+                    job.jcrnt = jcrnt;
+                    push_job(job);
+                    memcpy(_jcrnt,x+foffs,JCONT);
+                    b = x;
+                  }
+              AlignJob job;
+              job.beg = b;
+              job.end = x;
+              job.swide = swide;
+              job.ctg1 = icrnt;
+              job.jcrnt = jcrnt;
+              push_job(job);
+            }
         }
+      pthread_mutex_lock(&q_mutex);
+      active_producers--;
+      pthread_cond_broadcast(&q_cond_nonempty);
+      pthread_mutex_unlock(&q_mutex);
     }
+
+  AlignJob job;
+  while (pop_job(&job)) {
+      align_contigs(job.beg, job.end, job.swide, job.ctg1, job.jcrnt, pair);
+  }
 
   Free_Align_Spec(pair->spec);
   Free_Work_Data(pair->work);
@@ -4328,17 +4404,22 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
           fflush(stderr);
         }
 
-      for (p = 0; p < nused; p++)
+      active_producers = nused;
+      q_count = 0; q_head = 0; q_tail = 0;
+
+      for (p = 0; p < NTHREADS; p++) {
         tarm[p].comp = u;
+        tarm[p].is_producer = (p < nused);
+      }
 
 #if defined(DEBUG_SORT) || defined(DEBUG_SEARCH) || defined(DEBUG_HIT) || defined(DEBUG_ALIGN)
-      for (p = 0; p < nused; p++)
+      for (p = 0; p < NTHREADS; p++)
         search_seeds(tarm+p);
 #else
-      for (p = 1; p < nused; p++)
+      for (p = 1; p < NTHREADS; p++)
         pthread_create(threads+p,NULL,search_seeds,tarm+p);
       search_seeds(tarm);
-      for (p = 1; p < nused; p++)
+      for (p = 1; p < NTHREADS; p++)
         pthread_join(threads[p],NULL);
 #endif
     }
