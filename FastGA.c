@@ -134,7 +134,7 @@ typedef struct
     int64 *buck;
     int    file;
     int    inum;
-  } IOBuffer;
+  } __attribute__((aligned(64))) IOBuffer;
 
 static IOBuffer *N_Units;  //  NTHREADS^2 IO units for + pair temporary files
 static IOBuffer *C_Units;  //  NTHREADS^2 IO units for - pair temporary files
@@ -604,7 +604,7 @@ typedef struct
     IOBuffer    *cunit;
     int64        nhits;
     int64        tseed;
-  } SP;
+  } __attribute__((aligned(64))) SP;
 
 static void *new_merge_thread(void *args)
 { SP *parm = (SP *) args;
@@ -3774,7 +3774,7 @@ typedef struct
     int64     nlcov;
     int64     nmemo;
     int       tmaxl;
-  } TP;
+  } __attribute__((aligned(64))) TP;
 
 static void *search_seeds(void *args)
 { TP *parm = (TP *) args;
