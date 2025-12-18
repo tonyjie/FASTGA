@@ -227,7 +227,7 @@ typedef struct
     int     clone;      //  Is this a clone?
   } Post_List;
 
-#define POST_BLOCK 0x20000
+#define POST_BLOCK 0x40000  // 256KB (was 128KB) - larger reads from index files
 
 //  Load up the table buffer with the next STREAM_BLOCK suffixes (if possible)
 

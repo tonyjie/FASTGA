@@ -1,0 +1,20 @@
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/FastGA -vk -v -T32 -L:experiments/exp_1218_1422/iter_2/fastga.log -Pexperiments/exp_1218_1422/iter_2 -1:experiments/exp_1218_1422/iter_2/H1vH2.1aln /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP1.fasta.gz /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP2.fasta.gz
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 51082720, ave. len = 28.5, seeds per genome position = 0.6
+
+  Resources for phase:  4.302u  29.933s  4.797w  713.7%
+
+  Seed sort and alignment search, 6 parts
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:54.558u  1.880s  8.737w  1332.7%
+
+  Total Resources:  1:58.861u  31.836s  13.556w  1111.6%  0MB
