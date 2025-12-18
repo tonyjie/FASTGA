@@ -59,7 +59,7 @@ static int EXO_SIZE = sizeof(Overlap) - sizeof(void *);
 #define    PAFS         0x4
 #define    PAFL         0x8
 
-#define    IO_BUFFER_SIZE  2000000  // 2MB buffer for I/O operations (was 1MB)
+#define    IO_BUFFER_SIZE  4000000  // 4MB buffer for I/O operations (was 1MB, then 2MB)
 
 static char *Usage[] = { "[-vkMS] [-L:<log:path>] [-T<int(8)>] [-P<dir($TMPDIR)>] [<format(-paf)>]",
                          "[-f<int(10)>] [-c<int(85)> [-s<int(1000)>] [-l<int(100)>] [-i<float(.7)]",
@@ -227,7 +227,7 @@ typedef struct
     int     clone;      //  Is this a clone?
   } Post_List;
 
-#define POST_BLOCK 0x40000  // 256KB (was 128KB) - larger reads from index files
+#define POST_BLOCK 0x20000
 
 //  Load up the table buffer with the next STREAM_BLOCK suffixes (if possible)
 
