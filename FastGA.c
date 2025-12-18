@@ -642,9 +642,9 @@ static void *new_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -1062,9 +1062,9 @@ static void *old_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -1646,9 +1646,9 @@ static void *new_self_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -1940,9 +1940,9 @@ static void *old_self_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (8000000-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -3702,7 +3702,7 @@ typedef struct {
     int64  jcrnt;
 } AlignJob;
 
-#define QSIZE 100000
+#define QSIZE 1000000
 static AlignJob Queue[QSIZE];
 static int q_head = 0, q_tail = 0, q_count = 0;
 static pthread_mutex_t q_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -4077,7 +4077,7 @@ static int la_merge(TP *parm)
 
   //  Base level merge: Open all the input files and initialize their buffers
 
-  bsize  = (MEMORY*1000000ll)/NTHREADS;
+  bsize  = (MEMORY*8000000ll)/NTHREADS;
   block  = (char *) Malloc(bsize*NTHREADS+PTR_SIZE,"Allocating LAmerge blocks");
   in     = (IO_block *) Malloc(sizeof(IO_block)*NTHREADS,"Allocating LAmerge IO-reacords");
   if (block == NULL || in == NULL)
@@ -5154,7 +5154,7 @@ int main(int argc, char *argv[])
 
     N_Units = Malloc(NPARTS*NTHREADS*sizeof(IOBuffer),"IO buffers");
     C_Units = Malloc(NPARTS*NTHREADS*sizeof(IOBuffer),"IO buffers");
-    buffer  = Malloc(2*NPARTS*NTHREADS*1000000ll,"IO buffers");
+    buffer  = Malloc(2*NPARTS*NTHREADS*8000000ll,"IO buffers");
     bucks   = Malloc(2*NTHREADS*NCONTS*sizeof(int64),"IO buffers");
     if (N_Units == NULL || C_Units == NULL || buffer == NULL || bucks == NULL)
       Clean_Exit(1);
@@ -5162,8 +5162,8 @@ int main(int argc, char *argv[])
     k = 0;
     for (i = 0; i < NTHREADS; i++)
       for (j = 0; j < NPARTS; j++)
-        { N_Units[k].bufr = buffer + (2*k) * 1000000ll; 
-          C_Units[k].bufr = buffer + (2*k+1) * 1000000ll; 
+        { N_Units[k].bufr = buffer + (2*k) * 8000000ll; 
+          C_Units[k].bufr = buffer + (2*k+1) * 8000000ll; 
           N_Units[k].buck = bucks + (2*i) * NCONTS; 
           C_Units[k].buck = bucks + (2*i+1) * NCONTS; 
           N_Units[k].inum = k;
@@ -5217,7 +5217,7 @@ int main(int argc, char *argv[])
     for (j = 0; j < NPARTS; j++)
       for (i = 0; i < NTHREADS; i++)
         { N_Units[k].bufr = 
-          C_Units[k].bufr = buffer + i * (2*NPARTS*1000000ll); 
+          C_Units[k].bufr = buffer + i * (2*NPARTS*8000000ll); 
           x = i*NPARTS+j;
           nfile[k] = N_Units[x].file;
           cfile[k] = C_Units[x].file;
