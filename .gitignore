@@ -20,3 +20,6 @@ ONEalnTEST
 ONEview
 PAFtoALN
 PAFtoPSL
+
+# output alignment files
+*.1aln
