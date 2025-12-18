@@ -82,8 +82,8 @@ PASS: All checks passed
    - Run the script `scripts/run_fastga.sh` to get baseline performance.
    - Create a file `baseline/result.txt` with the timing.
 
-2. **Optimization iterations (5 iterations)**
-   - Loop from iter_0 to iter_4:
+2. **Optimization iterations (10 iterations)**
+   - Loop from iter_0 to iter_9:
      - Create a new directory `experiments/exp_1218_1615/iter_X` for each iteration. All the generated files in this iteration should be saved in this directory.
      - **Modify Code**: Apply code changes to relavant C files (`.c`, `.h`) in FastGA repository to optimize performance.
      - **Compile**: Run `make -j 32` in `/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/`. Ensure it compiles successfully. If the compilation fails, fix the errors and try again.
