@@ -2304,8 +2304,11 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
     seq = Current_Kmer(tp,NULL);
 #endif
     parm[0].pbeg = 0;
-    for (t = 1; t < NTHREADS; t++)
-      { p = (tp->nels * t) / NTHREADS;
+    int   phase1_threads = 4;
+    if (phase1_threads > NTHREADS) phase1_threads = NTHREADS;
+
+    for (t = 1; t < phase1_threads; t++)
+      { p = (tp->nels * t) / phase1_threads;
         GoTo_Kmer_Index(tp,p);
         if (p >= tp->nels)
           parm[t].pbeg = 0xffff;
@@ -2314,16 +2317,30 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
             parm[t].pbeg = (tp->cpre >> 8);
           }
       }
-    for (t = 0; t < NTHREADS-1; t++)
+    for (t = 0; t < phase1_threads-1; t++)
       parm[t].pend = parm[t+1].pbeg;
-    parm[NTHREADS-1].pend = 0xffff;
+    parm[phase1_threads-1].pend = 0xffff;
+    
+    // Clear unused threads
+    for (t = phase1_threads; t < NTHREADS; t++) {
+        parm[t].pbeg = 0xffff;
+        parm[t].pend = 0xffff;
+        parm[t].T1 = NULL;
+        parm[t].T2 = NULL;
+        parm[t].nhits = 0;
+        parm[t].tseed = 0;
+    }
   }
 
   parm[0].T1 = T1;
   parm[0].T2 = T2;
   parm[0].P1 = P1;
   parm[0].P2 = P2;
-  for (i = 1; i < NTHREADS; i++)
+  
+  int phase1_threads = 4;
+  if (phase1_threads > NTHREADS) phase1_threads = NTHREADS;
+
+  for (i = 1; i < phase1_threads; i++)
     { parm[i].T1 = Clone_Kmer_Stream(T1);
       parm[i].T2 = Clone_Kmer_Stream(T2);
       if (NEW_GIX)
@@ -2370,14 +2387,14 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
   if (NEW_GIX)
     {
 #ifdef DEBUG_MERGE
-      for (i = 0; i < NTHREADS; i++)
+      for (i = 0; i < phase1_threads; i++)
         new_merge_thread(parm+i);
 #else
-      for (i = 1; i < NTHREADS; i++)
+      for (i = 1; i < phase1_threads; i++)
         pthread_create(threads+i,NULL,new_merge_thread,parm+i);
       new_merge_thread(parm);
 
-      for (i = 1; i < NTHREADS; i++)
+      for (i = 1; i < phase1_threads; i++)
         pthread_join(threads[i],NULL);
 #endif
     }
@@ -2401,7 +2418,7 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
       fflush(stderr);
     }
 
-  for (i = 0; i < NTHREADS; i++)
+  for (i = 0; i < phase1_threads; i++)
     { nhits += parm[i].nhits;
       tseed += parm[i].tseed;
     }
@@ -2414,7 +2431,7 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
       if (LOG_FILE)
         fprintf(LOG_FILE,"\n  Adaptive seed merge for G2\n");
 
-      for (i = 0; i < NTHREADS; i++)
+      for (i = 0; i < phase1_threads; i++)
         { Kmer_Stream *u;
           Post_List   *p;
 
@@ -2431,28 +2448,28 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
       if (NEW_GIX)
         {
 #ifdef DEBUG_MERGE
-          for (i = 0; i < NTHREADS; i++)
+          for (i = 0; i < phase1_threads; i++)
             new_merge_thread(parm+i);
 #else
-          for (i = 1; i < NTHREADS; i++)
+          for (i = 1; i < phase1_threads; i++)
             pthread_create(threads+i,NULL,new_merge_thread,parm+i);
           new_merge_thread(parm);
 
-          for (i = 1; i < NTHREADS; i++)
+          for (i = 1; i < phase1_threads; i++)
             pthread_join(threads[i],NULL);
 #endif
         }
       else
         {
 #ifdef DEBUG_MERGE
-          for (i = 0; i < NTHREADS; i++)
+          for (i = 0; i < phase1_threads; i++)
             old_merge_thread(parm+i);
 #else
-          for (i = 1; i < NTHREADS; i++)
+          for (i = 1; i < phase1_threads; i++)
             pthread_create(threads+i,NULL,old_merge_thread,parm+i);
           old_merge_thread(parm);
 
-          for (i = 1; i < NTHREADS; i++)
+          for (i = 1; i < phase1_threads; i++)
             pthread_join(threads[i],NULL);
 #endif
         }
@@ -2462,7 +2479,7 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
           fflush(stderr);
         }
 
-      for (i = 0; i < NTHREADS; i++)
+      for (i = 0; i < phase1_threads; i++)
         { nhits += parm[i].nhits;
           tseed += parm[i].tseed;
         }
@@ -2471,11 +2488,11 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
   free(cache);
 
   for (i = NTHREADS-1; i >= 1; i--)
-    { Free_Kmer_Stream(parm[i].T1);
-      Free_Kmer_Stream(parm[i].T2);
+    { if (parm[i].T1) Free_Kmer_Stream(parm[i].T1);
+      if (parm[i].T2) Free_Kmer_Stream(parm[i].T2);
       if (!NEW_GIX)
-        { Free_Post_List(parm[i].P1);
-          Free_Post_List(parm[i].P2);
+        { if (parm[i].T1) Free_Post_List(parm[i].P1);
+          if (parm[i].T1) Free_Post_List(parm[i].P2);
         }
     }
   Free_Kmer_Stream(T1);
