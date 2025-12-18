@@ -1,6 +1,6 @@
 DEST_DIR = ~/bin
 
-CFLAGS = -O3 -Wall -Wextra -Wno-unused-result -fno-strict-aliasing
+CFLAGS = -O3 -Wall -Wextra -Wno-unused-result -fno-strict-aliasing -march=native -funroll-loops
 
 CC = gcc
 

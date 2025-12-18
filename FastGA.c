@@ -59,7 +59,7 @@ static int EXO_SIZE = sizeof(Overlap) - sizeof(void *);
 #define    PAFS         0x4
 #define    PAFL         0x8
 
-#define    IO_BUFFER_SIZE  4000000  // 4MB buffer for I/O operations (was 1MB, then 2MB)
+#define    IO_BUFFER_SIZE  2000000  // 2MB buffer - optimal size (tested 1MB, 2MB, 4MB)
 
 static char *Usage[] = { "[-vkMS] [-L:<log:path>] [-T<int(8)>] [-P<dir($TMPDIR)>] [<format(-paf)>]",
                          "[-f<int(10)>] [-c<int(85)> [-s<int(1000)>] [-l<int(100)>] [-i<float(.7)]",
