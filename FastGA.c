@@ -59,6 +59,8 @@ static int EXO_SIZE = sizeof(Overlap) - sizeof(void *);
 #define    PAFS         0x4
 #define    PAFL         0x8
 
+#define    IO_BUFFER_SIZE  2000000  // 2MB buffer for I/O operations (was 1MB)
+
 static char *Usage[] = { "[-vkMS] [-L:<log:path>] [-T<int(8)>] [-P<dir($TMPDIR)>] [<format(-paf)>]",
                          "[-f<int(10)>] [-c<int(85)> [-s<int(1000)>] [-l<int(100)>] [-i<float(.7)]",
                          "<source1:path>[<precursor>] [<source2:path>[<precursor>]]"
@@ -642,9 +644,9 @@ static void *new_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -1062,9 +1064,9 @@ static void *old_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -1646,9 +1648,9 @@ static void *new_self_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -1940,9 +1942,9 @@ static void *old_self_merge_thread(void *args)
   { int j;
 
     for (j = 0; j < NPARTS; j++)
-      { nunit[j].bend = nunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+      { nunit[j].bend = nunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         nunit[j].btop = nunit[j].bufr;
-        cunit[j].bend = cunit[j].bufr + (1000000-(IBYTE+JBYTE+1));
+        cunit[j].bend = cunit[j].bufr + (IO_BUFFER_SIZE-(IBYTE+JBYTE+1));
         cunit[j].btop = cunit[j].bufr;
       }
   }
@@ -2660,7 +2662,7 @@ static void *reimport_thread(void *args)
   int64  diag, flag, mask;
   uint8 *bend, *btop, *b;
 
-  iolen = 2*NPARTS*1000000;
+  iolen = 2*NPARTS*IO_BUFFER_SIZE;
   iunit = IBYTE + JBYTE + 1;
 
   iamt = read(in,bufr,iolen);
@@ -5073,7 +5075,7 @@ int main(int argc, char *argv[])
 
     N_Units = Malloc(NPARTS*NTHREADS*sizeof(IOBuffer),"IO buffers");
     C_Units = Malloc(NPARTS*NTHREADS*sizeof(IOBuffer),"IO buffers");
-    buffer  = Malloc(2*NPARTS*NTHREADS*1000000ll,"IO buffers");
+    buffer  = Malloc(2*NPARTS*NTHREADS*(int64)IO_BUFFER_SIZE,"IO buffers");
     bucks   = Malloc(2*NTHREADS*NCONTS*sizeof(int64),"IO buffers");
     if (N_Units == NULL || C_Units == NULL || buffer == NULL || bucks == NULL)
       Clean_Exit(1);
@@ -5081,8 +5083,8 @@ int main(int argc, char *argv[])
     k = 0;
     for (i = 0; i < NTHREADS; i++)
       for (j = 0; j < NPARTS; j++)
-        { N_Units[k].bufr = buffer + (2*k) * 1000000ll; 
-          C_Units[k].bufr = buffer + (2*k+1) * 1000000ll; 
+        { N_Units[k].bufr = buffer + (2*k) * (int64)IO_BUFFER_SIZE;
+          C_Units[k].bufr = buffer + (2*k+1) * (int64)IO_BUFFER_SIZE;
           N_Units[k].buck = bucks + (2*i) * NCONTS; 
           C_Units[k].buck = bucks + (2*i+1) * NCONTS; 
           N_Units[k].inum = k;
@@ -5135,8 +5137,8 @@ int main(int argc, char *argv[])
     k = 0;
     for (j = 0; j < NPARTS; j++)
       for (i = 0; i < NTHREADS; i++)
-        { N_Units[k].bufr = 
-          C_Units[k].bufr = buffer + i * (2*NPARTS*1000000ll); 
+        { N_Units[k].bufr =
+          C_Units[k].bufr = buffer + i * (2*NPARTS*(int64)IO_BUFFER_SIZE);
           x = i*NPARTS+j;
           nfile[k] = N_Units[x].file;
           cfile[k] = C_Units[x].file;
