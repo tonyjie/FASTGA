@@ -54,3 +54,23 @@ GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPL
   Resources for phase:  1:47.630u  2.121s  8.843w  1241.0%
 
   Total Resources:  1:52.036u  32.814s  14.379w  1007.4%  0MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/FastGA -vk -v -T32 -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_32/fastga.log -P/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_32 -1:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/thread_32/H1vH2.1aln /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP1.fasta.gz /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP2.fasta.gz
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 51082720, ave. len = 28.5, seeds per genome position = 0.6
+
+  Resources for phase:  7.251u  40.186s  17.585w  269.8%
+
+  Seed sort and alignment search, 6 parts
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:53.459u  1.928s  8.618w  1338.9%
+
+  Total Resources:  2:00.710u  42.133s  26.221w  621.0%  0MB

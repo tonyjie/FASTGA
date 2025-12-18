@@ -17,11 +17,11 @@
 #define SMAX  20
 #define NMAX   3
 
-#define THR0 15
-#define THR1 15
-#define THR2  8
-#define GAP1  9
-#define GAP2  4
+#define THR0 25
+#define THR1 25
+#define THR2 12
+#define GAP1 13
+#define GAP2  6
 
 static int S_thr0, S_thr1, S_thr2;
 static int S_gap1, S_gap2;

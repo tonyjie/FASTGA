@@ -1,0 +1,34 @@
+# FastGA Baseline Performance Result
+# Date: 2025-12-18
+
+## Command
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/FastGA -vk -v -T32 -L:experiments/exp_1218_1422/baseline/fastga.log -Pexperiments/exp_1218_1422/baseline -1:experiments/exp_1218_1422/baseline/H1vH2.1aln /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP1.fasta.gz /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP2.fasta.gz
+
+## Configuration
+- Threads: 32
+
+## Results
+- Total seeds: 51,082,720
+- Average seed length: 28.5
+- Seeds per genome position: 0.6
+
+### Phase 1: Adaptive seed merge
+- User CPU time: 4.349s
+- System CPU time: 30.281s
+- Wall clock time: 5.002s
+- CPU utilization: 692.3%
+
+### Phase 2: Seed sort and alignment search (6 parts)
+- Total hits over 85bp: 338,700
+- Total alignments: 376,250
+- Non-redundant alignments: 323,569 (average length: 1953)
+- User CPU time: 1:56.484 (116.484s)
+- System CPU time: 2.765s
+- Wall clock time: 8.550s
+- CPU utilization: 1394.6%
+
+### Total Resources
+- User CPU time: 2:00.834 (120.834s)
+- System CPU time: 33.063s
+- **Wall clock time: 13.570s** (TARGET TO OPTIMIZE)
+- CPU utilization: 1134.1%
