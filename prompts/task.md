@@ -16,7 +16,7 @@ You should carefully read the code to understand the algorithm and the data stru
 
 
 # Directories
-All experiments and generated files should be saved under: /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/experiments/exp_1218_1422
+All experiments and generated files should be saved under: /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/experiments/exp_1218_1520
 
 
 # Tools provided
@@ -27,7 +27,7 @@ Script: `/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/scripts/run
 
 Usage: `bash run_fastga.sh <output_directory>`, where <output_directory> is the directory to save the alignment results and the log file.
 
-Example: `bash run_fastga.sh /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/experiments/exp_1218_1422/iter0`
+Example: `bash run_fastga.sh /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/experiments/exp_1218_1520/iter0`
 
 It will run the FastGA binary with 32 threads, take two FASTA files as input, and save the alignment results in `.1aln` file, and save the output log file including the run time and CPU utilization information. An example log file is provided in `prompts/example_output/fastga.log`.
 Note that `.1gdb` and `.gix` files are already generated in the `EXAMPLE` directory, so `FAtoGDB` and `GIXmake` are not needed to be run again in our testing. This is because the `FastGA` step is the most time-consuming step, and we want to focus on the optimization of the `FastGA` step. 
@@ -62,7 +62,7 @@ Script: `/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/scripts/ver
 
 Usage: `bash verify_exact_match.sh --baseline <file> --candidate <file>`, where <file> is the `.1aln` file to compare. The baseline file is already generated in `/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/prompts/example_output/H1vH2.1aln`. The candidate file is the `.1aln` file newly generated to compare with the baseline file.
 
-Example: `bash verify_exact_match.sh --baseline /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/prompts/example_output/H1vH2.1aln --candidate /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/experiments/exp_1218_1422/iter0/H1vH2.1aln`
+Example: `bash verify_exact_match.sh --baseline /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/prompts/example_output/H1vH2.1aln --candidate /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/experiments/exp_1218_1520/iter0/H1vH2.1aln`
 
 The success of the verification will be indicated by the exit code of the script. 0 means the two `.1aln` files are exactly the same, 1 means the two `.1aln` files are different, and 2 means the script failed to run. A success verification will show the following output: 
 ```
@@ -84,7 +84,7 @@ PASS: All checks passed
 
 2. **Optimization iterations (5 iterations)**
    - Loop from iter_0 to iter_4:
-     - Create a new directory `experiments/exp_1218_1422/iter_X` for each iteration. All the generated files in this iteration should be saved in this directory.
+     - Create a new directory `experiments/exp_1218_1520/iter_X` for each iteration. All the generated files in this iteration should be saved in this directory.
      - **Modify Code**: Apply code changes to relavant C files (`.c`, `.h`) in FastGA repository to optimize performance.
      - **Compile**: Run `make -j 32` in `/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/`. Ensure it compiles successfully. If the compilation fails, fix the errors and try again.
      - **Run Modified FastGA**: Run the `scripts/run_fastga.sh` script to run the modified FastGA algorithm.
@@ -96,6 +96,9 @@ PASS: All checks passed
         - If performance **worsened**: 
           - **Revert the code** to the previous good state using git before trying the next idea.
           - Command: `git reset --hard HEAD~1` (Or simply undo changes to files).
+
+# Previous Trials with LLMs
+`/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/experiments/exp_1218_1422/OPTIMIZATION_SUMMARY.md` is the summary of one previous trial with LLM agent to optimize the performance of FastGA with 5 iterations. But it only tries some minimal modifications to the code, and the performance difference is very small compared to the baseline. You should try to find more significant performance improvements by understanding the code more deeplyand modifying the code more aggressively.
 
 
 # Other docuemnts Provided

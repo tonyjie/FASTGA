@@ -3,6 +3,7 @@
 **Branch**: `agent-optimize-1218_1422`
 **Date**: 2025-12-18
 **Experiment**: `/experiments/exp_1218_1422/`
+**LLM**: Claude Opus 4.5
 
 ## Final Results
 
