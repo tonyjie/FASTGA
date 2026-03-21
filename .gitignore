@@ -1,0 +1,40 @@
+# Compiled binaries
+FAtoGDB
+GDBtoFA
+GDBstat
+GDBshow
+GIXmake
+GIXshow
+GIXrm
+GIXmv
+GIXcp
+FastGA
+ALNshow
+ALNtoPAF
+ALNtoPSL
+ALNreset
+ALNplot
+ALNchain
+PAFtoALN
+PAFtoPSL
+ONEview
+FastKS
+ONEalnTEST
+ANOstat
+ANOshow
+ANOtoBED
+BEDtoANO
+
+# Object files
+*.o
+*.dSYM
+
+# Generated data files
+EXAMPLE/*.bps
+EXAMPLE/*.ktab.*
+EXAMPLE/*.1gdb
+EXAMPLE/*.gix
+EXAMPLE/thread_*/
+
+# Experiments
+experiments/
