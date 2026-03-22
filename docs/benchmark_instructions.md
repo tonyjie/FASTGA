@@ -115,6 +115,71 @@ The verbose logs contain `Resources for phase:` lines with format `Xu Ys Zw P%` 
 
 For the human genome run, the tmpdir monitor (`monitor_tmpdir.sh`) did not capture temp files because FastGA writes `_pair.*` files relative to the working directory rather than the `-P` path in some cases. Instead, we monitor total disk consumption via `df` polling at 30s intervals. The temp file overhead is computed as: `(BASELINE_FREE - current_free) - persistent_file_sizes`.
 
+## Evaluating a Storage Optimization
+
+When implementing a new storage optimization, follow this standardized process. See `docs/storage_optimization/optimization_template.md` for the results document template.
+
+### Step 1: Build and verify output correctness
+
+```bash
+cd /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA
+make FastGA
+
+# Run baseline (original behavior with -k to keep GIX)
+mkdir -p /tmp/fastga_eval && cd /tmp/fastga_eval
+cp $OLDPWD/EXAMPLE/HAP1.fasta.gz $OLDPWD/EXAMPLE/HAP2.fasta.gz .
+FastGA -v -k -T8 -1:baseline.1aln HAP1.fasta.gz HAP2.fasta.gz
+
+# Clean generated files, run optimized version
+rm -f *.1gdb .*.bps *.gix .*.ktab.* *.1ano
+FastGA -v -T8 -1:optimized.1aln HAP1.fasta.gz HAP2.fasta.gz
+
+# Compare outputs
+# Tier 1 (bit-exact): compare via ONEview, skip header (first 7 lines)
+ONEview baseline.1aln | tail -n +8 > /tmp/base.txt
+ONEview optimized.1aln | tail -n +8 > /tmp/opt.txt
+diff /tmp/base.txt /tmp/opt.txt  # should be empty for bit-exact
+
+# Tier 2 (comparable): compare alignment statistics
+# - alignment count, average length, coverage from verbose log
+```
+
+### Step 2: Measure storage impact
+
+Use the storage audit scripts with T=32 on the EXAMPLE dataset:
+
+```bash
+cd /work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA
+
+# Run with dedicated tmpdir for temp file monitoring
+# Adapt run_storage_audit_v2.sh or run manually:
+WORKDIR=/tmp/fastga_storage_test/work
+TMPDIR=/tmp/fastga_storage_test/tmp
+mkdir -p $WORKDIR $TMPDIR && cd $WORKDIR
+cp $OLDPWD/EXAMPLE/HAP*.fasta.gz .
+bash $OLDPWD/benchmarks/monitor_tmpdir.sh $$ $TMPDIR monitor.tsv &
+/usr/bin/time -v FastGA -v -T32 -P$TMPDIR HAP1.fasta.gz HAP2.fasta.gz 2>verbose.log
+# Parse monitor.tsv for peak temp, measure persistent files with du/ls
+```
+
+Generate a storage timeline comparison figure (baseline vs optimized) — see existing plot scripts in `benchmarks/` for examples.
+
+### Step 3: Measure performance impact
+
+```bash
+# Run both versions with /usr/bin/time -v, compare:
+# - Wall clock, user CPU, system CPU, peak RSS
+# - Per-phase timing from verbose log (grep "Resources for phase")
+```
+
+### Step 4: Document results
+
+1. Copy `docs/storage_optimization/optimization_template.md` to `docs/storage_optimization/optN_<name>.md`
+2. Fill in all sections: summary, verification, storage impact, performance impact
+3. Add the storage timeline comparison figure
+4. Complete the checklist
+5. Update `docs/storage_optimization/README.md` status table
+
 ## Output Files Summary
 
 After running all benchmarks:
@@ -142,6 +207,12 @@ docs/
   storage_timeline_comparison.png  # EXAMPLE dataset thread comparison (T=1,4,8,32)
   storage_timeline_human_T32.png   # Human genome timeline (T=32)
   benchmark_instructions.md        # This file
+  storage_optimization/
+    README.md                      # Overview index with status table
+    optimization_plan.md           # Full plan with 6 identified opportunities
+    optimization_template.md       # Standard template for new optimizations
+    opt1_early_gix_deletion.md     # Optimization 1: results and verification
+    storage_timeline_early_gix_comparison.png  # Opt 1 before/after figure
 
 # Human genome benchmark results (on scratch, not in repo)
 /scratch/jl4257/seq_align/fastga_datasets/GRCh38_vs_CHM13/
