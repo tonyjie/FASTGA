@@ -125,6 +125,18 @@ For concurrent runs on the same HPC node:
 | Baseline | 64 + 64 = **128 GB** |
 | With early deletion | 7 + 7 = **14 GB** |
 
+## Git Info
+
+| | Commit | Description |
+|---|---|---|
+| Docs | `049e311` | Optimization framework + Opt 1 documentation |
+| Code | `77ac29d` | `FastGA.c` change + plot script |
+
+To revert this optimization's code change while keeping docs:
+```bash
+git revert 77ac29d
+```
+
 ## Checklist
 
 - [x] Code change implemented
