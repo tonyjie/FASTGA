@@ -5157,41 +5157,6 @@ int main(int argc, char *argv[])
     if (LOG_FILE)
       TimeTo(LOG_FILE,0,1);
 
-    //  Free Post_Lists (no longer needed after seed merge)
-
-    if ( ! SELF)
-      Free_Post_List(P2);
-    Free_Post_List(P1);
-
-    //  Early GIX deletion: GIX files are only needed during seed merge.
-    //    Delete them now to free disk space for the sort+align phase.
-    //    Only delete GIX we generated (not user-provided), and only if -k is not set.
-    //    Use -f (not -fg) to preserve the GDB which is still needed for alignment.
-
-    if ( ! KEEP)
-      { char *command;
-
-        if (TYPE2 <= IS_GDB)
-          command = Malloc(strlen(PATH1)+strlen(ROOT1)+
-                           strlen(PATH2)+strlen(ROOT2)+100,"Allocating command string");
-        else
-          command = Malloc(strlen(PATH1)+strlen(ROOT1)+100,"Allocating command string");
-
-        if (command != NULL)
-          { if (TYPE1 <= IS_GDB)
-              { sprintf(command,"GIXrm -f %s/%s.gix",PATH1,ROOT1);
-                system(command);
-                TYPE1 = IS_GDB + 1;
-              }
-            if (TYPE2 <= IS_GDB)
-              { sprintf(command,"GIXrm -f %s/%s.gix",PATH2,ROOT2);
-                system(command);
-                TYPE2 = IS_GDB + 1;
-              }
-            free(command);
-          }
-      }
-
     //  Transpose N_unit & C_unit matrices
 
     nfile = (int *) buffer;
@@ -5313,6 +5278,10 @@ int main(int argc, char *argv[])
   if ( ! SELF)
     Close_GDB(gdb2);
   Close_GDB(gdb1);
+
+  if ( ! SELF)
+    Free_Post_List(P2);
+  Free_Post_List(P1);
 
   free(SORT_PATH);
 
