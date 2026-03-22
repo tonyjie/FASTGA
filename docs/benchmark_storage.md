@@ -221,3 +221,116 @@ This doesn't reduce the absolute peak (which occurs during seed merge), but it *
 4. **The `.gix` stub**: Always 128 MB (16M int64 prefix index). A fixed cost that doesn't scale with genome size — not a priority for large genomes but significant for small ones.
 
 5. **Alignment temps (`_uniq`, `_algn`)**: Small (~27 MB for 86 Mbp). Not a priority target.
+
+---
+
+## Human Genome Benchmark: GRCh38 vs CHM13 (T=32)
+
+### Test Configuration
+
+| Parameter | Value |
+|---|---|
+| Dataset | GRCh38 (3.2 GB FASTA, 705 contigs) vs CHM13 (3.0 GB FASTA, 24 contigs) |
+| Threads | 32 |
+| Date | 2026-03-21 |
+| Data location | `/scratch/jl4257/seq_align/fastga_datasets/` |
+
+### Storage Usage Timeline
+
+![Storage Usage Timeline (T=32, Human Genome)](storage_timeline_human_T32.png)
+
+The figure shows disk usage over time for the full GRCh38 vs CHM13 run at T=32. The orange area shows persistent files (GIX + GDB) ramping up during the two GIX build phases (0-100s). The blue area shows temp files peaking briefly during seed merge (~100-105s) then draining during the 8-minute sort+align phase. Red dots are the actual disk consumption measured via `df` at 30s intervals. Peak total: 71 GB (64 GB persistent + 7 GB temp), occurring right after both GIX indices are complete and seed merge generates temp files.
+
+Compared to the EXAMPLE dataset timeline, the same pattern is visible but at 30x scale: GIX build dominates persistent storage, seed merge is the peak moment, and temp files drain gradually during sort+align.
+
+### Measured Persistent File Sizes
+
+| Category | GRCh38 | CHM13 |
+|---|---:|---:|
+| GDB (.1gdb) | 92 KB | 3.1 KB |
+| BPS (.bps) | 747.8 MB | 743.2 MB |
+| GIX stub (.gix) | 128.0 MB | 128.0 MB |
+| KTAB partitions (.ktab.1-.32) | 32.4 GB | 30.1 GB |
+| **GIX total (stub + ktab)** | **32.5 GB** | **30.2 GB** |
+| **All files total** | **33.2 GB** | **30.9 GB** |
+
+**Output**: `output.1aln` = 156.7 MB
+
+**Both genomes combined persistent**: **64.1 GB** (GIX dominates at 62.7 GB = 97.8%)
+
+### GIX Scaling: Measured vs Projected
+
+| Genome | Size (Gbp) | Measured GIX | Projected (10.8 GB/Gbp) | Ratio (GB/Gbp) |
+|---|---:|---:|---:|---:|
+| HAP1 (EXAMPLE) | 0.086 | 0.93 GB | - | 10.8 |
+| HAP2 (EXAMPLE) | 0.087 | 0.93 GB | - | 10.7 |
+| GRCh38 | 3.1 | **32.5 GB** | 33.5 GB | **10.5** |
+| CHM13 | 3.0 | **30.2 GB** | 32.4 GB | **10.1** |
+
+The scaling rate is slightly lower for human genomes (~10.1-10.5 GB/Gbp) compared to the EXAMPLE dataset (~10.8 GB/Gbp). Projection accuracy: within ~5%.
+
+Note: GRCh38 has a larger GDB (92 KB vs 3.1 KB for CHM13) because it has 705 contigs vs 24 — but this is negligible in storage terms.
+
+### Measured Peak Disk Usage
+
+Disk free space was polled every 30 seconds during the run:
+
+```
+Time        Free (GB)  Consumed (GB)  Phase
++0s         308        0              Start
++30s        290        18             GIX GRCh38 building
++60s        272        36             GIX GRCh38 building
++90s        250        58             GIX GRCh38 + CHM13 building
++120s       237        71             PEAK — both GIX complete + seed merge temps
++150s       239        69             Seed merge → sort+align transition
++300s+      243-244    64-65          Sort+align, temp files draining
+End         244        64             Final persistent files only
+```
+
+| Metric | Measured | Projected (from EXAMPLE) |
+|---|---:|---:|
+| **Peak disk consumed** | **71 GB** | ~86 GB |
+| Final persistent (GIX+GDB+output) | 64.1 GB | ~67 GB |
+| **Peak temp overhead** | **~7 GB** | ~16 GB |
+
+The peak temp overhead (~7 GB) was significantly lower than the EXAMPLE-based projection (~16 GB). This is because:
+- Seed pair temp files scale with seed count, not genome size
+- The two human genomes are very similar (avg alignment 28,415 bp vs 1,953 bp for EXAMPLE), meaning seeds cluster into longer chains → fewer seed pairs materialized
+- The 30s polling interval may have missed a brief higher peak during seed merge (which only lasted 5.3s)
+
+### Comparison: EXAMPLE vs Human Storage
+
+| Component | EXAMPLE (86 Mbp) | Human (3.1 Gbp) | Scale Factor |
+|---|---:|---:|---:|
+| GIX (both genomes) | 1.86 GB | 62.7 GB | 33.7x |
+| GDB (.bps, both) | 42 MB | 1.49 GB | 36.4x |
+| Seed pair temps (peak) | 438 MB | ~7 GB | ~16x |
+| Output .1aln | 19.5 MB | 156.7 MB | 8.0x |
+| Peak total disk | 2.34 GB | 71 GB | 30.3x |
+| Genome size ratio | - | - | 36x |
+
+GIX scales linearly with genome size (33.7x for 36x). Seed pair temps scale sublinearly (~16x for 36x) — fewer seeds per genome position for highly similar genomes (0.4 seeds/pos for human vs 0.6 for EXAMPLE). Output .1aln scales sublinearly too — fewer but longer alignments.
+
+### Updated Projected Storage
+
+With measured human data points, we can refine projections:
+
+| Component | Formula (updated) | Human (measured) | Newt 24 Gbp (projected) |
+|---|---|---:|---:|
+| GIX (both genomes) | 2 x 10.3 GB/Gbp | 62.7 GB | **494 GB** |
+| GDB (.bps, both) | 2 x genome/4 | 1.49 GB | 12 GB |
+| Seed pair temps | ~2.3 GB/Gbp* | ~7 GB | ~55 GB |
+| Output .1aln | ~50 MB/Gbp | 157 MB | ~1.2 GB |
+| **Peak total disk** | | **71 GB** | **~562 GB** |
+
+*Seed pair scaling updated: 7 GB / 3.05 Gbp = ~2.3 GB/Gbp for similar genomes. For more divergent genomes, this could be higher.
+
+### Implications for Storage Optimization (Updated)
+
+1. **GIX is even more dominant at human scale**: 62.7 GB out of 71 GB peak = **88%**. This is the #1 optimization target.
+
+2. **Temp overhead is lower than projected**: ~7 GB vs 16 GB projected. For similar genomes (like two human assemblies), seed pair temps are moderate. For divergent genomes (different species), temps could be significantly larger.
+
+3. **Early GIX deletion remains valuable**: Deleting the 62.7 GB of GIX after seed merge (which takes only 5.3s) would reduce the 8-minute sort+align phase from 71 GB to ~9 GB of disk usage. Critical for running multiple comparisons on shared HPC nodes.
+
+4. **Two concurrent human runs**: With current behavior, 2 x 71 GB = **142 GB** peak. With early GIX deletion, the second run could start its sort+align while the first is still running, needing only 71 + 9 = **80 GB** combined.

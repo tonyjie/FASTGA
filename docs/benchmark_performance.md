@@ -193,3 +193,83 @@ Trivially fast (<0.5s). Near-zero CPU — wall time is I/O latency. Not a scalin
 | 32 | 1 | 22.04 | 120.43 | 37.02 | 757752 | 714% |
 | 32 | 2 | 21.90 | 121.62 | 37.45 | 757856 | 726% |
 | 32 | 3 | 22.03 | 122.28 | 36.76 | 757520 | 721% |
+
+---
+
+## Human Genome Benchmark: GRCh38 vs CHM13
+
+### Test Configuration
+
+| Parameter | Value |
+|---|---|
+| Dataset | GRCh38 (3.2 GB, 705 contigs) vs CHM13 (3.0 GB, 24 contigs) |
+| Server | en-ec-zhang-x4 |
+| CPU | AMD EPYC 9124 16-Core Processor (2 sockets x 16 cores = 64 threads) |
+| Threads | 32 |
+| Date | 2026-03-21 |
+| Data location | `/scratch/jl4257/seq_align/fastga_datasets/` |
+
+### Overall Timing
+
+| Metric | Value |
+|---|---|
+| Wall clock | **9 min 48s** |
+| User CPU | 3,194s (53 min 14s) |
+| System CPU | 556s (9 min 16s) |
+| Peak RSS | **19.0 GB** |
+| CPU utilization | 638% |
+
+### Per-Phase Runtime Breakdown
+
+| Phase | Tool | Wall (s) | User (s) | CPU% |
+|---|---|---:|---:|---:|
+| GDB GRCh38 | FAtoGDB | 9.2 | 6.8 | 100% |
+| GIX GRCh38 (32 parts) | GIXmake | 39.1 | 333.9 | 910% |
+| GDB CHM13 | FAtoGDB | 9.1 | 6.4 | 100% |
+| GIX CHM13 (32 parts) | GIXmake | 42.7 | 326.5 | 811% |
+| Seed merge | FastGA | 5.3 | 122.2 | 2652% |
+| Sort + align (66 parts) | FastGA | **481.9** (8:02) | 2,398.3 (39:58) | 599% |
+| **Total** | | **587.8** (9:48) | 3,194.1 (53:14) | 638% |
+
+### Phase Percentage of Total Wall Time
+
+| Phase | Wall (s) | % of Total |
+|---|---:|---:|
+| GDB creation (both) | 18.3 | 3.1% |
+| GIX build (both) | 81.8 | **13.9%** |
+| Seed merge | 5.3 | 0.9% |
+| Sort + align | 481.9 | **82.0%** |
+| **Total** | 587.8 | 100% |
+
+### Key Observations
+
+- **Sort + align dominates** at 82% of total wall time (481.9s / 8 min). This is a much larger fraction than the EXAMPLE dataset (33% at T=32), because the alignment phase scales superlinearly with genome size — 1.3 billion seeds and 518K alignments of average length 28,415 bp.
+- **Seed merge is remarkably fast**: Only 5.3s wall clock despite 1.3 billion seeds — 2652% CPU utilization shows excellent parallelism. This is I/O-bound on the EXAMPLE data but becomes CPU-bound at human scale.
+- **GIX build**: 82s total for both genomes (32 parts each). Good parallelism at ~850-910% CPU.
+- **GDB creation**: 18s total, single-threaded, minor overhead.
+- **Peak RSS**: 19 GB — significantly higher than the EXAMPLE dataset (740 MB at T=32). The sort array and alignment buffers scale with seed count.
+
+### Comparison: EXAMPLE (86 Mbp) vs Human (3.1 Gbp) at T=32
+
+| Metric | EXAMPLE (86 Mbp) | Human (3.1 Gbp) | Scale Factor |
+|---|---:|---:|---:|
+| Wall clock | 22.0s | 587.8s | 26.7x |
+| Seeds found | 51M | 1,298M | 25.4x |
+| Alignments | 323K | 518K | 1.6x |
+| Avg alignment length | 1,953 bp | 28,415 bp | 14.5x |
+| Peak RSS | 740 MB | 19.0 GB | 25.7x |
+| Sort + align fraction | 33% | 82% | - |
+
+Runtime scales roughly linearly with seed count (~25x genome size ratio, ~27x runtime ratio). The alignment phase becomes increasingly dominant at larger scales because seed count grows linearly but alignment work grows superlinearly (more seeds per chain, longer alignments).
+
+### Alignment Statistics
+
+| Metric | Value |
+|---|---|
+| Total seeds | 1,298,273,853 |
+| Average seed length | 39.0 bp |
+| Seeds per genome position | 0.4 |
+| Chain hits (>85bp) | 843,675 |
+| Raw alignments | 791,660 |
+| Non-redundant alignments | 518,037 |
+| Average alignment length | 28,415 bp |
