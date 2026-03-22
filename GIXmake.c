@@ -933,7 +933,6 @@ static void *setup_thread_plain(void *args)
             *x++ = 0;
             for (i = 4; i < KMER; i += 4)
               *x++ = Comp[n[-i]];
-            *x++ = 0;
             for (i = 0; i < PostBytes; i++)
               *x++ = bust[i];
             for (i = 0; i < ContBytes; i++)
@@ -945,7 +944,6 @@ static void *setup_thread_plain(void *args)
             *x++ = 0;
             for (i = 4; i < KMER; i += 4)
               *x++ = n[i];
-            *x++ = 0;
             for (i = 0; i < PostBytes; i++)
               *x++ = bust[i];
             for (i = 0; i < ContBytes; i++)
@@ -1576,6 +1574,10 @@ void k_sort(GDB *gdb)
     y = -1;
     if (write(tab,&y,sizeof(int64)) < 0) goto gix_error;
 
+    { int format_flags = MASK ? 1 : 0;   //  bit 0: mask byte present in ktab entries
+      if (write(tab,&format_flags,sizeof(int)) < 0) goto gix_error;
+    }
+
     close(tab);
   }
  
@@ -1842,7 +1844,7 @@ int main(int argc, char *argv[])
         Free_ANO(sanos+i);
     }
   MASK   = (NUM_MASKS > 0);
-  MBYTES = KBYTES+1;
+  MBYTES = MASK ? KBYTES+1 : KBYTES;
 
   { int i, l0, l1, l2, l3;   //  Compute byte complement table
 
@@ -1907,7 +1909,7 @@ int main(int argc, char *argv[])
   { int64 nels;
     int   nbit;
 
-    nels = 0x100000000ll / (ContBytes + PostBytes + KBYTES + 2);
+    nels = 0x100000000ll / (ContBytes + PostBytes + MBYTES + 1);
     nbit = (.81 * (gdb->seqtot - (KMER-1)*gdb->ncontig)) / nels;
 
     NPARTS = ((nbit-1)/NTHREADS+1)*NTHREADS;

@@ -224,6 +224,7 @@ typedef struct
     uint8  *ctop;       //  Ptr top of current table block in buffer
     int64  *neps;       //  Size of each thread part in elements
     int     clone;      //  Is this a clone?
+    int     has_mask;   //  Does the GIX have a mask byte per ktab entry?
   } Post_List;
 
 #define POST_BLOCK 0x20000
@@ -324,13 +325,24 @@ static Post_List *Open_Post_List(char *name)
   if (read(f,&I1,sizeof(int64)) < 0) goto open_io_error;
 
   if (I1 < 0)
-    { P->nels   = 0;
+    { int format_flags;
+
+      P->has_mask = 1;
+      if (read(f,&format_flags,sizeof(int)) == sizeof(int))
+        P->has_mask = (format_flags & 1);
+
+      P->nels   = 0;
       P->cache  = NULL;
       P->neps   = NULL;
       P->index  = NULL;
       P->copn   = -1;
+      close(f);
+      free(root);
+      free(dir);
       return (P);
     }
+
+  P->has_mask = 1;   //  Old format always has mask/count byte
 
   P->cache  = Malloc(POST_BLOCK*pbyte,"Allocating post list buffer\n");
   P->neps   = Malloc(nfile*sizeof(int64),"Allocating parts table of Post_List");
@@ -821,14 +833,15 @@ static void *new_merge_thread(void *args)
 #endif
           continue;
         }
-      if (SOFT_MASK)
-        mlen = plen;
-      if (suf1[CBYTE] >= mlen)
-        {
+      if (SOFT_MASK && CBYTE >= 0)
+        { mlen = plen;
+          if (suf1[CBYTE] >= mlen)
+            {
 #ifdef DEBUG_MERGE
-          printf("      %lld: Masked %d\n",T1->cidx,suf1[CBYTE]);
+              printf("      %lld: Masked %d\n",T1->cidx,suf1[CBYTE]);
 #endif
-          continue;
+              continue;
+            }
         }
       if (flip)
         { int       adest, bsign;
@@ -858,7 +871,7 @@ static void *new_merge_thread(void *args)
                     p[ISIGN] |= 0x80;
                 }
 #endif
-              if (p[ISIGN] & 0x80 || p[-2] >= mlen)
+              if (p[ISIGN] & 0x80 || (CBYTE >= 0 && p[-2] >= mlen))
                 continue;
               memcpy(aptr,p+IPOST,ICONT);
               adest = Select[acont];
@@ -951,7 +964,7 @@ static void *new_merge_thread(void *args)
                     p[JSIGN] |= 0x80;
                 }
 #endif
-              if (p[-2] >= mlen)
+              if (CBYTE >= 0 && p[-2] >= mlen)
                 continue;
               bsign = (p[JSIGN] & 0x80);
               if (bsign)
@@ -1788,14 +1801,15 @@ static void *new_self_merge_thread(void *args)
 #endif
           continue;
         }
-      if (SOFT_MASK)
-        mlen = plen;
-      if (suf1[CBYTE] >= mlen)
-        {
+      if (SOFT_MASK && CBYTE >= 0)
+        { mlen = plen;
+          if (suf1[CBYTE] >= mlen)
+            {
 #ifdef DEBUG_MERGE
-          printf("      %lld: Masked %d\n",T1->cidx,suf1[CBYTE]);
+              printf("      %lld: Masked %d\n",T1->cidx,suf1[CBYTE]);
 #endif
-          continue;
+              continue;
+            }
         }
 
       { int       idest, isign, jsign;
@@ -1831,7 +1845,7 @@ static void *new_self_merge_thread(void *args)
                   p[JSIGN] |= 0x80;
               }
 #endif
-            if (p[-2] >= mlen)
+            if (CBYTE >= 0 && p[-2] >= mlen)
               continue;
             jsign = (p[ISIGN] & 0x80);
             if (isign == jsign)
@@ -4886,12 +4900,15 @@ int main(int argc, char *argv[])
     }
 
   if (P1->nels == 0)
-    { NEW_GIX = 1;
-      T1 = Open_Kmer_Stream(Catenate(PATH1,"/",ROOT1,".gix"),P1->pbyte+2);
+    { int csize1 = P1->pbyte + 1 + P1->has_mask;
+      int csize2 = P2->pbyte + 1 + P2->has_mask;
+
+      NEW_GIX = 1;
+      T1 = Open_Kmer_Stream(Catenate(PATH1,"/",ROOT1,".gix"),csize1);
       if (SELF)
         T2 = T1;
       else
-        T2 = Open_Kmer_Stream(Catenate(PATH2,"/",ROOT2,".gix"),P2->pbyte+2);
+        T2 = Open_Kmer_Stream(Catenate(PATH2,"/",ROOT2,".gix"),csize2);
     }
   else
     { NEW_GIX = 0;
@@ -5010,10 +5027,16 @@ int main(int argc, char *argv[])
   JSIGN = JBYTE-1;
 
   KBYTE = T2->pbyte;
-  CBYTE = T2->hbyte;
-  LBYTE = CBYTE+1;
-
-  PAYOFF = LBYTE+1;
+  if (P2->has_mask)
+    { CBYTE  = T2->hbyte;
+      LBYTE  = CBYTE+1;
+      PAYOFF = LBYTE+1;
+    }
+  else
+    { CBYTE  = -1;
+      LBYTE  = T2->hbyte;
+      PAYOFF = LBYTE+1;
+    }
   
   ESHIFT = 8*IPOST;
 
