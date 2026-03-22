@@ -45,5 +45,4 @@ benchmarks/logs/
 benchmarks/timing/
 benchmarks/fd_monitor/
 benchmarks/storage_audit/
-benchmarks/storage_audit_v2/T*/
-benchmarks/storage_audit_v2/*.log
+benchmarks/storage_audit_v2/
