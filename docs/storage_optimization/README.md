@@ -29,9 +29,9 @@ See [optimization_plan.md](optimization_plan.md) for the full plan with 6 identi
 
 ## Completed Optimizations
 
-| # | Optimization | Storage Impact | Quality | Status |
-|---|---|---|---|---|
-| 1 | [Early GIX Deletion](opt1_early_gix_deletion.md) | Frees ~1,860 MB during sort+align (EXAMPLE) / ~63 GB (human) | Bit-exact | Implemented, verified |
+| # | Optimization | Storage Impact | Quality | Status | Commits |
+|---|---|---|---|---|---|
+| 1 | [Early GIX Deletion](opt1_early_gix_deletion.md) | Frees ~1,860 MB during sort+align (EXAMPLE) / ~63 GB (human) | Bit-exact | Implemented, verified | Docs: `049e311`, Code: `77ac29d` |
 
 ## Planned Optimizations
 

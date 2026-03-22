@@ -86,6 +86,18 @@ Per-phase wall clock:
 | User CPU | | | |
 | Peak RSS | | | |
 
+## Git Info
+
+| | Commit | Description |
+|---|---|---|
+| Docs | `<hash>` | Optimization N documentation |
+| Code | `<hash>` | Code change description |
+
+To revert this optimization's code change while keeping docs:
+```bash
+git revert <code_commit_hash>
+```
+
 ## Checklist
 
 - [ ] Code change implemented
