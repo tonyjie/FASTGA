@@ -32,7 +32,7 @@ See [optimization_plan.md](optimization_plan.md) for the full plan with 6 identi
 | # | Optimization | Storage Impact | Quality | Status | Commits |
 |---|---|---|---|---|---|
 | 1 | [Early GIX Deletion](opt1_early_gix_deletion.md) | Frees ~1,860 MB during sort+align (EXAMPLE) / ~63 GB (human) | Bit-exact | Implemented, verified | Docs: `049e311`, Code: `77ac29d` |
-| 3 | [Eliminate Mask Byte](opt3_eliminate_mask_byte.md) | -7.7% ktab size = -124 MB (EXAMPLE) / -4.6 GB (human) | Bit-exact | Implemented, verified | Docs: `<pending>`, Code: `<pending>` |
+| 3 | [Eliminate Mask Byte](opt3_eliminate_mask_byte.md) | -7.7% ktab size = -124 MB (EXAMPLE) / -4.6 GB (human) | Bit-exact | Implemented, verified | Docs: `6460e0a`, Code: `ea31b73` |
 
 ## Cumulative Effect
 

@@ -138,8 +138,8 @@ Fixed by guarding all `p[-2]` mask checks with `CBYTE >= 0`.
 
 | | Commit | Description |
 |---|---|---|
-| Docs | `<pending>` | Optimization 3 documentation |
-| Code | `<pending>` | GIXmake.c + FastGA.c changes |
+| Docs | `6460e0a` | Optimization 3 documentation |
+| Code | `ea31b73` | GIXmake.c + FastGA.c changes |
 
 To revert this optimization's code change while keeping docs:
 ```bash
@@ -157,4 +157,4 @@ git revert <code_commit_hash>
 - [ ] Tested on human genome dataset
 - [x] Results documented in this file
 - [ ] README.md status table updated
-- [ ] Git commit hashes recorded
+- [x] Git commit hashes recorded
