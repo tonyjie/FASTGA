@@ -170,7 +170,7 @@ The pipeline has 4 major phases inside `FastGA.c`:
 - Each entry: 10 bytes (2-bit packed 40-mer) + 2 bytes (contig #) + 4 bytes (signed position)
 - Plus LCP (longest common prefix) array computed during MSD radix sort
 - Hidden partition files: `.<root>.ktab.<1..NPARTS>` (k-mer table) + `.<root>.post.<1..NPARTS>` (position lists)
-- **Size: ~14 GB per 1 Gbp of genome** (README figure; paper says ~11 GB/Gbp after syncmer filtering)
+- **Size: ~10.1-10.5 GB per Gbp of genome** (measured on human genomes; README says ~14 GB/Gbp, paper ~11 GB/Gbp)
 - The `.gix` stub file itself contains a 128MB prefix index (16M int64 entries)
 
 ### ALN (.1aln)
@@ -180,44 +180,43 @@ The pipeline has 4 major phases inside `FastGA.c`:
 
 ## Storage Problem: Large Intermediate Files
 
-This is the primary motivation for the `optimize-memory` branch.
+This is the primary motivation for the `optimize-memory` branch. See `docs/benchmark_storage.md` for full analysis with figures.
 
 ### The Problem
-When aligning large genomes, FastGA creates massive intermediate files that can consume hundreds of GBs of disk space. Running multiple FastGA processes on the same node compounds this, easily hitting multi-TB scratch limits and causing crashes.
+When aligning large genomes, FastGA creates massive intermediate files that can consume tens to hundreds of GBs of disk space. Running multiple FastGA processes on the same node compounds this, easily hitting scratch limits and causing crashes.
 
-### Where the Storage Goes
+### Measured Storage (Human Genomes, GRCh38 vs CHM13, ~3 Gbp each)
 
-**1. GIX Index Files (~14 GB per Gbp of genome)**
-- The dominant persistent storage cost
-- A 3 Gbp human genome requires ~42 GB of index files
-- Two genomes = ~84 GB just for indices
-- With `-k` flag these persist for reuse; without it they are rebuilt each time
+| Component | Size | % of Peak |
+|---|---:|---:|
+| GIX indices (both genomes) | **62.7 GB** | 88% |
+| GDB (.bps, both genomes) | 1.5 GB | 2% |
+| Seed pair temp files | ~7 GB | 10% |
+| Alignment temps | small | <1% |
+| Output .1aln | 157 MB | <1% |
+| **Peak total disk** | **71 GB** | 100% |
 
-**2. Seed Pair Temp Files (in `$TMPDIR` or `-P` dir)**
-- Created during Phase 1 (adaptive seed merge)
-- `_pair.<pid>.<k>.N` and `.C` files: NPARTS x NTHREADS files for normal and complement strands
-- Store (lcp, post1, post2) tuples for every seed hit
-- Size scales with number of k-mer matches between genomes — can be 10-100x genome size for repetitive genomes
-- Files are `unlink()`-ed immediately after creation (temp files), but still consume disk while open
+- **GIX scaling**: ~10.1-10.5 GB per Gbp of genome (measured). The `.gix` stub is always 128 MB; the `.ktab.*` partitions dominate.
+- **Temp files are invisible**: `_pair.*`, `_uniq.*`, `_algn.*` are `open()`-ed then immediately `unlink()`-ed — they consume disk blocks but are invisible to `ls`.
+- **Storage is independent of thread count**: Same peak whether using 1 or 32 threads.
+- **Peak RSS**: 19 GB for human genomes at T=32.
 
-**3. Alignment Temp Files (in `$TMPDIR` or `-P` dir)**
-- `_uniq.<pid>.<p>.las` and `_algn.<pid>.<p>.las` per thread
-- Scale with number of alignments found
-- Also immediately unlinked
+### Key Finding: GIX Files Are Only Needed During Seed Merge
 
-**4. GIXmake Distribution Files**
-- `._post.<pid>.<k>.idx`: NTHREADS x NPARTS temp files during index construction
-- Immediately unlinked after use
+The GIX files (~62.7 GB for human genomes) are only read during the seed merge phase (5.3s at T=32). The sort+align phase (8 min, 82% of runtime) **never touches GIX files** — it only reads `.bps` and `_pair.*` temp files. But currently, GIX is deleted only at program exit, holding ~63 GB of disk throughout the longest phase unnecessarily.
 
-### Key Scaling Factors
-- GIX size scales linearly with genome size
-- Seed pair files scale with genome_size x average_k-mer_frequency (can be superlinear for repetitive genomes)
-- NPARTS is auto-calculated to keep sort partitions near 4GB; larger genomes = more partitions = more files
-- Memory during index construction: peak is the MSD radix sort array (~4GB per partition)
-- Memory during alignment: sort array sized to max seeds in any partition panel, plus ~2GB I/O buffers
+### Optimization Targets (by storage impact)
+1. **GIX `.ktab` partitions** — 88% of peak storage. Reducing GIX size or enabling early deletion after seed merge would have the biggest impact.
+2. **Early GIX deletion** — Easiest win: delete GIX right after seed merge instead of at exit. Drops sort+align storage from 71 GB to ~9 GB. Critical for concurrent runs.
+3. **Seed pair temp files** — ~7 GB for human genomes (~2.3 GB/Gbp for similar genomes). Streaming consumption or chunked processing could reduce this.
 
-### Optimization Goals
-1. **Reduce intermediate file sizes** — especially GIX indices and seed pair temp files
-2. **Maintain alignment precision** — no significant loss in sensitivity or specificity
-3. **Maintain runtime performance** — avoid major slowdowns
-4. **Enable concurrent runs** — multiple FastGA processes on the same node without disk exhaustion
+### Optimization Constraints
+1. **Maintain alignment precision** — no significant loss in sensitivity or specificity
+2. **Maintain runtime performance** — avoid major slowdowns
+3. **Enable concurrent runs** — multiple FastGA processes on the same node without disk exhaustion
+
+### Benchmark Documentation
+- `docs/benchmark_performance.md` — Thread scaling and per-phase runtime breakdown
+- `docs/benchmark_storage.md` — File sizes, storage timeline, optimization opportunities
+- `docs/benchmark_instructions.md` — How to reproduce all benchmarks
+- `benchmarks/` — Scripts for profiling
