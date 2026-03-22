@@ -215,8 +215,17 @@ The GIX files (~62.7 GB for human genomes) are only read during the seed merge p
 2. **Maintain runtime performance** — avoid major slowdowns
 3. **Enable concurrent runs** — multiple FastGA processes on the same node without disk exhaustion
 
-### Benchmark Documentation
+### Current Status: Optimization 1 (Early GIX Deletion) Implemented
+
+GIX files are deleted immediately after seed merge instead of at program exit. This frees ~63 GB during the 8-minute sort+align phase for human genomes. Bit-exact output, zero performance impact. See `docs/storage_optimization/opt1_early_gix_deletion.md` for full results.
+
+### Documentation
 - `docs/benchmark_performance.md` — Thread scaling and per-phase runtime breakdown
-- `docs/benchmark_storage.md` — File sizes, storage timeline, optimization opportunities
-- `docs/benchmark_instructions.md` — How to reproduce all benchmarks
-- `benchmarks/` — Scripts for profiling
+- `docs/benchmark_storage.md` — File sizes, storage timeline, per-phase file inventory
+- `docs/benchmark_instructions.md` — How to reproduce all benchmarks and evaluate optimizations
+- `docs/storage_optimization/` — Optimization efforts, plans, and results
+  - `README.md` — Overview index with status table for all optimizations
+  - `optimization_plan.md` — Full plan with 6 identified opportunities
+  - `optimization_template.md` — Standard template for each new optimization
+  - `opt1_early_gix_deletion.md` — Optimization 1: results and verification
+- `benchmarks/` — Scripts for profiling and evaluation
