@@ -34,6 +34,7 @@ EXAMPLE/*.bps
 EXAMPLE/*.ktab.*
 EXAMPLE/*.1gdb
 EXAMPLE/*.gix
+EXAMPLE/*.1ano
 EXAMPLE/thread_*/
 
 # Experiments
