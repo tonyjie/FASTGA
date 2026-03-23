@@ -1,15 +1,16 @@
-# Optimization 5: Block-Compressed ktab (In Progress)
+# Optimization 5: Block-Compressed ktab — FAILED
 
 ## Summary
 
-Compress ktab partition files using zstd block compression for streaming decompression during the seed merge. Prototype validated ~14% compression ratio (1.16x).
+Attempted to compress ktab partition files using zstd block compression for streaming decompression during the seed merge. The compression ratio was only ~14% (far below the projected 30-50%), and the implementation failed end-to-end verification — the compressed-then-decompressed data produces different alignment results from the original. **All code changes were reverted. No Opt5 code is in the codebase.**
 
 | Property | Value |
 |---|---|
 | **Type** | Zero-cost (intended) |
 | **Quality tier** | Tier 1 (Bit-exact, intended) |
 | **Target** | Reduce ktab file size by ~14% |
-| **Status** | **Blocked** — reader works, writer has unresolved bug |
+| **Status** | **FAILED** — end-to-end verification fails (53.6M seeds vs 51.1M baseline) |
+| **Code in codebase** | **None** — all changes reverted, codebase at Opt1+3 |
 
 ## Compression Analysis
 
@@ -54,13 +55,10 @@ Body:
   ...
 ```
 
-## What's Blocked
+## What Failed
 
-### Writer (GIXmake.c) — Has Bug
-When the compressed output code is added to GIXmake.c, the ktab content changes even though:
-- The memcpy reads from the same sarray addresses as the original big_write
-- The byte counts are identical
-- The sort/compress phases are not modified
+### End-to-End: Compressed Writer + Compressed Reader → Wrong Results
+When GIXmake writes compressed ktab AND FastGA reads it with the compressed reader, alignment results differ from baseline:
 
 **Symptoms**: Seed count changes from 51.1M to 53.6M (5% increase). Average seed length decreases from 28.5 to 25.9. Non-redundant alignments decrease from 323,569 to 309,494.
 
@@ -90,11 +88,19 @@ When the compressed output code is added to GIXmake.c, the ktab content changes 
 
 Not committed — changes were reverted to keep codebase at Opt1+3. The reader code (libfastk.c) and compression script (compress_ktab.py) are available but not staged.
 
-## Next Steps
+## Why It's Not Worth Pursuing Further
 
-1. Debug the GIXmake writer — likely a subtle variable scope or compiler optimization issue
-2. Alternative: implement as a post-processing step using compress_ktab.py
-3. If writer bug is resolved, verify bit-exact output and measure performance
+1. **Modest savings**: Only ~14% compression (not 30-50% as projected). The 4-byte position payload per entry is nearly random and barely compressible. For human genomes, this saves ~4.2 GB per genome — meaningful but not transformative.
+2. **High complexity**: Changes required in GIXmake.c (writer), libfastk.c (reader, 6 functions), Makefile (zstd dependency). The decompression round-trip bug was not resolved despite extensive debugging.
+3. **External dependency**: Requires linking against libzstd, breaking FastGA's zero-dependency build.
+4. **Better alternatives**: Opt 6 (syncmer filtering) could achieve ~40% reduction with minimal code changes, though it requires Tier 2 quality evaluation.
+
+## If Someone Wants to Resume
+
+1. The suspected root cause is a mismatch between how `ZSTD_compress` in GIXmake writes blocks and how `ZSTD_decompress` in libfastk.c reads them back — possibly a block boundary, entry count, or buffer size issue.
+2. **Next debugging step**: Add byte-level verification inside the C reader's `More_Kmer_Stream` compressed path — after `ZSTD_decompress`, write the decompressed bytes to a file and compare against known-good uncompressed data.
+3. **Alternative approach**: Use `compress_ktab.py` as a post-processing step (build uncompressed with existing GIXmake, compress externally, read with the Opt5 reader). This bypasses the writer bug entirely.
+4. The reader code (libfastk.c changes) is in `/tmp/opt5_libfastk.patch` (if still present) and documented in this file.
 
 ## Checklist
 

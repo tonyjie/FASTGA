@@ -53,5 +53,5 @@ With Opt 1 + Opt 3 combined:
 |---|---|---|---|---|
 | 2 | Sparse prefix index | ~254 MB savings | Bit-exact | Not started |
 | 4 | On-the-fly LCP | ~7% ktab reduction | Bit-exact | Deferred (high complexity) |
-| 5 | [Ktab Compression](opt5_ktab_compression.md) | ~14% ktab reduction (not 30-50% as projected) | Bit-exact | **Blocked** — reader works, writer bug |
+| 5 | [Ktab Compression](opt5_ktab_compression.md) | ~14% ktab reduction (not 30-50% as projected) | Bit-exact (intended) | **FAILED** — decompression round-trip bug, reverted |
 | 6 | Aggressive syncmer filtering | ~40% ktab reduction | Trade-off | Not started |
