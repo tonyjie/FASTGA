@@ -47,3 +47,6 @@ benchmarks/timing/
 benchmarks/fd_monitor/
 benchmarks/storage_audit/
 benchmarks/storage_audit_v2/
+
+# Git worktrees
+.worktrees/
