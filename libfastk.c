@@ -741,6 +741,12 @@ typedef struct
     uint8 *ctop;       //  Ptr top of current table block in buffer
     int64 *neps;       //  Size of each thread part in elements
     int    clone;      //  Is this a clone?
+    int    no_lcp;     //  LCP not on disk, compute on-the-fly
+    int    disk_pbyte; //  on-disk entry size (= pbyte when LCP present, pbyte-1 when not)
+    uint8 *prev_suf;   //  previous entry's kmer suffix for LCP computation
+    int    has_prev;   //  whether prev_suf is valid
+    //  Note: cross-prefix LCP values may be inflated (>= plen when they should be < plen),
+    //  but FastGA's merge never reads LCP at prefix boundaries (it resets on cpre change).
   } _Kmer_Stream;
 
 #define STREAM(S) ((_Kmer_Stream *) S)
@@ -755,6 +761,29 @@ typedef struct
 
 //  Load up the table buffer with the next STREAM_BLOCK suffixes (if possible)
 
+  //  Compute LCP in bases between two kmer suffixes that share the same prefix.
+  //  Returns prefix_bases + number of matching suffix bases.
+
+static int compute_suffix_lcp(uint8 *a, uint8 *b, int hbyte, int prefix_bases)
+{ int lcp = prefix_bases;
+  int j;
+
+  for (j = 0; j < hbyte; j++)
+    { if (a[j] != b[j])
+        { uint8 diff = a[j] ^ b[j];
+          if (diff & 0xC0) return (lcp);
+          lcp += 1;
+          if (diff & 0x30) return (lcp);
+          lcp += 1;
+          if (diff & 0x0C) return (lcp);
+          lcp += 1;
+          return (lcp);
+        }
+      lcp += 4;
+    }
+  return (lcp);
+}
+
 static void More_Kmer_Stream(_Kmer_Stream *S)
 { int    pbyte = S->pbyte;
   uint8 *table = S->table;
@@ -763,6 +792,76 @@ static void More_Kmer_Stream(_Kmer_Stream *S)
 
   if (S->part > S->nthr)
     return;
+
+  if (S->no_lcp)
+    { int    disk_pb  = S->disk_pbyte;
+      int    hbyte    = S->hbyte;
+      int    lcp_off  = hbyte;   //  LCP byte offset in in-memory entry (after suffix; no mask when no_lcp)
+      int    len, nentries, i;
+
+      while (1)
+        { len = read(copn,table,STREAM_BLOCK*disk_pb);
+          if (len > 0)
+            break;
+          close(copn);
+          S->part += 1;
+          if (S->part > S->nthr)
+            { S->csuf = NULL;
+              S->copn = copn;
+              return;
+            }
+          sprintf(S->name+S->nlen,"%d",S->part);
+          copn = open(S->name,O_RDONLY);
+          lseek(copn,sizeof(int)+sizeof(int64),SEEK_SET);
+        }
+
+      nentries = len / disk_pb;
+
+      //  Expand entries from back to front: insert LCP byte at lcp_off
+      for (i = nentries-1; i >= 0; i--)
+        { uint8 *src = table + i * disk_pb;
+          uint8 *dst = table + i * pbyte;
+          int tail = disk_pb - lcp_off;   //  bytes after LCP insertion point
+          //  Move tail (post+cont) data
+          memmove(dst + lcp_off + 1, src + lcp_off, tail);
+          //  Move head (kmer suffix + mask) if needed
+          if (dst != src)
+            memmove(dst, src, lcp_off);
+          dst[lcp_off] = 0;   //  LCP placeholder
+        }
+
+      //  Compute LCPs by comparing consecutive kmer suffixes
+      { int plen = S->ibyte * 4;   //  prefix length in bases (12)
+
+        for (i = 0; i < nentries; i++)
+          { uint8 *entry = table + i * pbyte;
+            if (i == 0)
+              { if (S->has_prev)
+                  entry[lcp_off] = compute_suffix_lcp(S->prev_suf, entry, hbyte, plen);
+                else
+                  entry[lcp_off] = 0;   //  First entry ever, no predecessor
+              }
+            else
+              { uint8 *prev = table + (i-1) * pbyte;
+                entry[lcp_off] = compute_suffix_lcp(prev, entry, hbyte, plen);
+              }
+          }
+
+        //  Save last entry's suffix for next block
+        if (nentries > 0)
+          { uint8 *last = table + (nentries-1) * pbyte;
+            memcpy(S->prev_suf, last, hbyte);
+            S->has_prev = 1;
+          }
+      }
+
+      ctop = table + nentries * pbyte;
+      S->csuf = table;
+      S->ctop = ctop;
+      S->copn = copn;
+      return;
+    }
+
   while (1)
     { ctop = table + read(copn,table,STREAM_BLOCK*pbyte);
       if (ctop > table)
@@ -788,6 +887,7 @@ Kmer_Stream *Open_Kmer_Stream(char *name, int csize)
   int64         nels;
   int           copn;
   int           shift;
+  int           no_lcp;
 
   int    f, p;
   char  *dir, *root, *full;
@@ -795,6 +895,14 @@ Kmer_Stream *Open_Kmer_Stream(char *name, int csize)
   int64  n;
 
   setup_fmer_table();
+
+  //  Negative csize signals: LCP byte NOT on disk, |csize| is in-memory payload size
+
+  no_lcp = 0;
+  if (csize < 0)
+    { no_lcp = 1;
+      csize = -csize;
+    }
 
   //  Open stub file and read header values
 
@@ -879,6 +987,14 @@ Kmer_Stream *Open_Kmer_Stream(char *name, int csize)
   S->nthr   = nthreads;
   S->clone  = 0;
 
+  S->no_lcp     = no_lcp;
+  S->disk_pbyte = no_lcp ? pbyte - 1 : pbyte;
+  S->has_prev   = 0;
+  if (no_lcp)
+    S->prev_suf = Malloc(hbyte,"Allocating LCP prev suffix buffer");
+  else
+    S->prev_suf = NULL;
+
   //  Set position to beginning
 
   sprintf(S->name+S->nlen,"%d",1);
@@ -923,6 +1039,12 @@ Kmer_Stream *Clone_Kmer_Stream(Kmer_Stream *O)
     exit (1);
   strncpy(S->name,STREAM(O)->name,S->nlen);
 
+  S->has_prev = 0;
+  if (S->no_lcp)
+    S->prev_suf = Malloc(S->hbyte,"Allocating LCP prev suffix buffer (clone)");
+  else
+    S->prev_suf = NULL;
+
   //  Set position to beginning
 
   sprintf(S->name+S->nlen,"%d",1);
@@ -959,6 +1081,8 @@ void Free_Kmer_Stream(Kmer_Stream *_S)
     }
   free(S->name);
   free(S->table);
+  if (S->prev_suf != NULL)
+    free(S->prev_suf);
   if (S->copn >= 0)
     close(S->copn);
   free(S);
@@ -1045,8 +1169,8 @@ int Open_Kmer_Cache(Kmer_Stream *_S, int64 bidx, int64 eidx, int bpre, int epre,
         end = eidx-leps;
       beg = beps - leps;
 
-      end *= S->pbyte;
-      beg *= S->pbyte;
+      end *= S->disk_pbyte;
+      beg *= S->disk_pbyte;
       if (beg > 0)
         lseek(f,beg,SEEK_CUR);
 
@@ -1075,6 +1199,7 @@ int Open_Kmer_Cache(Kmer_Stream *_S, int64 bidx, int64 eidx, int bpre, int epre,
   S->cidx = bidx;
   S->cpre = bpre;
   S->nels = eidx;
+  S->has_prev = 0;
   More_Kmer_Stream(S);
 
   return (0);
@@ -1096,11 +1221,17 @@ Kmer_Stream *Clone_Kmer_Cache(Kmer_Stream *O, int64 fidx, int64 bidx, int bpre)
   //  Set position to beginning
 
   copn = open(S->name,O_RDONLY);
-  lseek(copn,(bidx-fidx)*S->pbyte,SEEK_SET);
+  lseek(copn,(bidx-fidx)*S->disk_pbyte,SEEK_SET);
 
   S->copn  = copn;
   S->cidx  = bidx;
   S->cpre  = bpre;
+
+  S->has_prev = 0;
+  if (S->no_lcp)
+    S->prev_suf = Malloc(S->hbyte,"Allocating LCP prev suffix buffer (cache clone)");
+  else
+    S->prev_suf = NULL;
 
   More_Kmer_Stream(S);
 
@@ -1116,6 +1247,8 @@ void Free_Kmer_Cache(Kmer_Stream *_S, int bpre)
       free(S->inver);
     }
   free(S->table);
+  if (S->prev_suf != NULL)
+    free(S->prev_suf);
   if (S->copn >= 0)
     close(S->copn);
   if (!S->clone)
@@ -1307,8 +1440,9 @@ inline void GoTo_Kmer_Index(Kmer_Stream *_S, int64 i)
       S->part = p;
     }
 
-  lseek(S->copn,sizeof(int) + sizeof(int64) + i*S->pbyte,SEEK_SET);
+  lseek(S->copn,sizeof(int) + sizeof(int64) + i*S->disk_pbyte,SEEK_SET);
 
+  S->has_prev = 0;   //  Reset LCP state after seek
   More_Kmer_Stream(S);
 }
 
@@ -1329,7 +1463,6 @@ int GoTo_Kmer_Entry(Kmer_Stream *_S, uint8 *entry)
   int64 *index = S->index;
   int    ibyte = S->ibyte;
   int    hbyte = S->hbyte;
-  int    pbyte = S->pbyte;
   int64  proff = sizeof(int) + sizeof(int64);
 
   uint8  kbuf[hbyte];
@@ -1383,7 +1516,7 @@ int GoTo_Kmer_Entry(Kmer_Stream *_S, uint8 *entry)
 
   while (r-l > STREAM_BLOCK)
     { m = ((l+r) >> 1);
-      lseek(f,proff+m*pbyte,SEEK_SET);
+      lseek(f,proff+m*S->disk_pbyte,SEEK_SET);
       read(f,kbuf,hbyte);
       if (mycmp(kbuf,entry,hbyte) < 0)
         l = m+1;
@@ -1400,8 +1533,9 @@ int GoTo_Kmer_Entry(Kmer_Stream *_S, uint8 *entry)
       return (0);
     }
 
-  lseek(f,proff+l*pbyte,SEEK_SET);
+  lseek(f,proff+l*S->disk_pbyte,SEEK_SET);
 
+  S->has_prev = 0;
   More_Kmer_Stream(S);
   S->cidx = l + lo;
 

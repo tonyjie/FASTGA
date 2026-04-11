@@ -52,6 +52,11 @@ With Opt 1 + Opt 3 combined:
 | # | Optimization | Estimated Impact | Quality | Status |
 |---|---|---|---|---|
 | 2 | Sparse prefix index | ~254 MB savings | Bit-exact | Not started |
-| 4 | On-the-fly LCP | ~7% ktab reduction | Bit-exact | Deferred (high complexity) |
+| 4 | On-the-fly LCP | -8.3% ktab = -127 MB (EXAMPLE) / -4.5 GB (human) | Bit-exact | **Verified** — full pipeline exact match (seeds + alignments) |
 | 5 | [Ktab Compression](opt5_ktab_compression.md) | ~14% ktab reduction (not 30-50% as projected) | Bit-exact (intended) | **FAILED** — decompression round-trip bug, reverted |
 | 6 | Aggressive syncmer filtering | ~40% ktab reduction | Trade-off | Not started |
+| 7 | [Chunk-wise GIX](opt7_chunkwise_gix.md) | **-23.4 GB peak (-37%)** with `-n` stub mode (K=4, human) | Bit-exact | **Verified** — 36% peak reduction measured, 18x merge regression |
+
+## Comprehensive Report
+
+See [optimization_report.md](optimization_report.md) for a detailed analysis of all attempted optimizations, rationale, results, and recommendations.
