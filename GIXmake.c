@@ -61,6 +61,11 @@ static int KBYTES;     //  Bytes for 2-bit compress k-mer (KMER/4)
 static int MASK;       //  Set if GIX is to be masked
 static int MBYTES;     //  Bytes for masked k-mer (KBYTES+1)
 
+static int CHUNK_FIRST;  //  First partition to output (0-based), default 0
+static int CHUNK_LAST;   //  Last partition to output (0-based, inclusive), default NPARTS-1
+static int CHUNKED;      //  Non-zero if -C flag was given
+static int STUB_ONLY;    //  -n: write .gix stub only, no ktab partition files
+
 #define BUFF_MAX   1000000
 #define SCAN_MAX  10000000    //  Must be divisible by 4
 #define NUM_BUCK      1024
@@ -1218,13 +1223,12 @@ static void *compress_thread(void *args)
   int64   nkmer;
   int64   x, e, y;
   int     w, k, z;
-  int     lcp, idx, flc;
+  int     idx;
   uint8  *b;
 
   nkmer = 0;
   x = off;
   b = (sarray + x) + 1;
-  lcp = sarray[x];
   prefix += ((beg>>2) << 16);
   e = x + span;
   z = (sarray[e] == 0);   //  Caution: end of panel can have 0 lcp
@@ -1244,21 +1248,17 @@ static void *compress_thread(void *args)
       idx = ((sarray[x+1] << 8) | sarray[x+2]);
       prefix[idx] += w;
       nkmer += w;
-      flc = lcp;
       while (x < y)
         { for (k = 3; k < MBYTES; k++)
             *b++ = sarray[x+k];
-          *b++ = flc;
-          flc  = 40;
           for (k = MBYTES; k < swide; k++)
             *b++ = sarray[x+k];
           x += swide;
         }
 
-      lcp = sarray[x];
     }
   if (z)
-    lcp = sarray[e] = 0;
+    sarray[e] = 0;
 
   NKMER[beg] = nkmer;
 
@@ -1384,7 +1384,7 @@ void k_sort(GDB *gdb)
   pthread_mutex_init(&TMUTEX,NULL);
   pthread_cond_init(&TCOND,NULL);
 
-  for (part = 0; part < NPARTS; part++)
+  for (part = CHUNK_FIRST; part <= CHUNK_LAST; part++)
 
     { kbeg = Ksplit[part];
       kend = Ksplit[part+1];
@@ -1485,37 +1485,41 @@ void k_sort(GDB *gdb)
 #endif
       }
 
-      { int   tout;
-        int64 nents, xp, off;
+      { int64 nents;
 
         nents = 0;
         for (p = kbeg; p < kend; p++)
           nents += NKMER[p];
         nkmer += nents;
 
-        if (VERBOSE)
-          { fprintf(stderr,"\r    Outputing part %d  ",part+1);
-            fflush(stderr);
-          }
+        if (!STUB_ONLY)
+          { int   tout;
+            int64 xp, off;
 
-        tout = open(Catenate(TPATH,"/.",TROOT,Numbered_Suffix(".ktab.",part+1,"")),
-                            O_WRONLY|O_CREAT|O_TRUNC,0666);
-        if (tout < 0)
-          { fprintf(stderr,"%s: Cannot open part file %s/.%s.ktab.%d for writing\n",
-                           Prog_Name,TPATH,TROOT,p+1);
-            goto remove_parts;
-          }
-        if (write(tout,&KMER,sizeof(int)) < 0) goto part_error;
-        if (write(tout,&nents,sizeof(int64)) < 0) goto part_error;
+            if (VERBOSE)
+              { fprintf(stderr,"\r    Outputing part %d  ",part-CHUNK_FIRST+1);
+                fflush(stderr);
+              }
 
-        off = 0;
-        for (p = kbeg; p < kend; p++)
-          { xp = big_write(tout,sarray+off+1,NKMER[p]*(swide-2));
-            if (xp != NKMER[p]*(swide-2))
-              goto part_error;
-            off += panel[p];
+            tout = open(Catenate(TPATH,"/.",TROOT,Numbered_Suffix(".ktab.",part-CHUNK_FIRST+1,"")),
+                                O_WRONLY|O_CREAT|O_TRUNC,0666);
+            if (tout < 0)
+              { fprintf(stderr,"%s: Cannot open part file %s/.%s.ktab.%d for writing\n",
+                               Prog_Name,TPATH,TROOT,part-CHUNK_FIRST+1);
+                goto remove_parts;
+              }
+            if (write(tout,&KMER,sizeof(int)) < 0) goto part_error;
+            if (write(tout,&nents,sizeof(int64)) < 0) goto part_error;
+
+            off = 0;
+            for (p = kbeg; p < kend; p++)
+              { xp = big_write(tout,sarray+off+1,NKMER[p]*(swide-3));
+                if (xp != NKMER[p]*(swide-3))
+                  goto part_error;
+                off += panel[p];
+              }
+            close(tout);
           }
-        close(tout);
       }
     }
 
@@ -1541,6 +1545,7 @@ void k_sort(GDB *gdb)
     int   x, freq;
     int64 y;
     int64 maxpre;
+    int   chunk_nparts = CHUNK_LAST - CHUNK_FIRST + 1;
 
     tab = open(Catenate(TPATH,"/",TROOT,".gix"),O_WRONLY|O_CREAT|O_TRUNC,0666);
     if (tab < 0)
@@ -1548,7 +1553,7 @@ void k_sort(GDB *gdb)
         goto remove_parts;
       }
     if (write(tab,&KMER,sizeof(int)) < 0) goto gix_error;
-    if (write(tab,&NPARTS,sizeof(int)) < 0) goto gix_error;
+    if (write(tab,&chunk_nparts,sizeof(int)) < 0) goto gix_error;
     x = 1;
     if (write(tab,&x,sizeof(int)) < 0) goto gix_error;
     x = 3;
@@ -1565,7 +1570,7 @@ void k_sort(GDB *gdb)
     freq = 0;
     if (write(tab,&PostBytes,sizeof(int)) < 0) goto gix_error;
     if (write(tab,&ContBytes,sizeof(int)) < 0) goto gix_error;
-    if (write(tab,&NPARTS,sizeof(int)) < 0) goto gix_error;
+    if (write(tab,&chunk_nparts,sizeof(int)) < 0) goto gix_error;
     if (write(tab,&maxpre,sizeof(int64)) < 0) goto gix_error;
     if (write(tab,&freq,sizeof(int)) < 0) goto gix_error;
     if (write(tab,&(gdb->ncontig),sizeof(int)) < 0) goto gix_error;
@@ -1574,7 +1579,7 @@ void k_sort(GDB *gdb)
     y = -1;
     if (write(tab,&y,sizeof(int64)) < 0) goto gix_error;
 
-    { int format_flags = MASK ? 1 : 0;   //  bit 0: mask byte present in ktab entries
+    { int format_flags = (MASK ? 1 : 0) | 2;   //  bit 0: mask byte present, bit 1: LCP byte NOT stored
       if (write(tab,&format_flags,sizeof(int)) < 0) goto gix_error;
     }
 
@@ -1590,9 +1595,9 @@ gix_error:
   goto remove_parts;
 
 part_error:
-  fprintf(stderr,"%s: IO error writing to part file %s/.%s.ktab.%d\n",Prog_Name,TPATH,TROOT,part+1);
+  fprintf(stderr,"%s: IO error writing to part file %s/.%s.ktab.%d\n",Prog_Name,TPATH,TROOT,part-CHUNK_FIRST+1);
 remove_parts:
-  for (p = 1; p <= NTHREADS; p++)
+  for (p = 1; p <= CHUNK_LAST - CHUNK_FIRST + 1; p++)
     unlink(Catenate(TPATH,"/.",TROOT,Numbered_Suffix(".ktab.",p,"")));
   exit (1);
 }
@@ -1659,13 +1664,17 @@ int main(int argc, char *argv[])
     if (SORT_PATH == NULL)
       SORT_PATH = ".";
     NUM_MASKS = 0;
+    CHUNK_FIRST = -1;
+    CHUNK_LAST  = -1;
+    CHUNKED     = 0;
+    STUB_ONLY   = 0;
 
     j = 1;
     for (i = 1; i < argc; i++)
       if (argv[i][0] == '-')
         switch (argv[i][1])
         { default:
-            ARG_FLAGS("v")
+            ARG_FLAGS("vn")
             break;
           case 'k':
             ARG_NON_NEGATIVE(KMER,"index k-mer size");
@@ -1688,6 +1697,18 @@ int main(int argc, char *argv[])
           case 'T':
             ARG_NON_NEGATIVE(NTHREADS,"number of threads to use");
             break;
+          case 'C':
+            { int cf, cl;
+              if (sscanf(argv[i]+2,"%d:%d",&cf,&cl) != 2 || cf < 1 || cl < cf)
+                { fprintf(stderr,"%s: -C option requires first:last (1-based, first <= last)\n",
+                                 Prog_Name);
+                  exit (1);
+                }
+              CHUNK_FIRST = cf - 1;   //  Convert to 0-based
+              CHUNK_LAST  = cl - 1;
+              CHUNKED     = 1;
+            }
+            break;
         }
       else if (argv[i][0] == '#')
         MFILES[NUM_MASKS++] = argv[i]+1;
@@ -1695,7 +1716,8 @@ int main(int argc, char *argv[])
         argv[j++] = argv[i];
     argc = j;
 
-    VERBOSE = flags['v'];
+    VERBOSE   = flags['v'];
+    STUB_ONLY = flags['n'];
 
     KBYTES  = (KMER>>2);
     if (argc < 2 || argc > 3)
@@ -1919,6 +1941,18 @@ int main(int argc, char *argv[])
       NPARTS = 64;
 
     Ksplit = Malloc((NPARTS+1)*sizeof(int),"Allocating split vector");
+
+    if (CHUNK_FIRST < 0)
+      { CHUNK_FIRST = 0;
+        CHUNK_LAST  = NPARTS - 1;
+      }
+    else
+      { if (CHUNK_LAST >= NPARTS)
+          { fprintf(stderr,"%s: -C last (%d) exceeds number of partitions (%d)\n",
+                           Prog_Name,CHUNK_LAST+1,NPARTS);
+            exit (1);
+          }
+      }
   }
 
   //  Make sure you can open (NPARTS + 2) * NTHREADS + 1 + tid files at one time.

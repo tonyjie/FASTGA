@@ -78,6 +78,7 @@ static double ALIGN_RATE;  //  1.-e
 static int    NTHREADS;    //  -T
 static char  *SORT_PATH;   //  -P
 static int    KEEP;        //  -k
+static int    NCHUNKS;     //  -C: chunk count for chunk-wise GIX processing (0 = disabled)
 static int    SYMMETRIC;   //  -S
 static int    SOFT_MASK;   //  Do softmask
 static int    SELF;        //  Comparing A to A, or A to B?
@@ -225,6 +226,7 @@ typedef struct
     int64  *neps;       //  Size of each thread part in elements
     int     clone;      //  Is this a clone?
     int     has_mask;   //  Does the GIX have a mask byte per ktab entry?
+    int     has_lcp;    //  Does ktab have LCP byte on disk?
   } Post_List;
 
 #define POST_BLOCK 0x20000
@@ -328,8 +330,11 @@ static Post_List *Open_Post_List(char *name)
     { int format_flags;
 
       P->has_mask = 1;
+      P->has_lcp  = 1;
       if (read(f,&format_flags,sizeof(int)) == sizeof(int))
-        P->has_mask = (format_flags & 1);
+        { P->has_mask = (format_flags & 1);
+          P->has_lcp  = !(format_flags & 2);
+        }
 
       P->nels   = 0;
       P->cache  = NULL;
@@ -343,6 +348,7 @@ static Post_List *Open_Post_List(char *name)
     }
 
   P->has_mask = 1;   //  Old format always has mask/count byte
+  P->has_lcp  = 1;   //  Old format always has LCP byte
 
   P->cache  = Malloc(POST_BLOCK*pbyte,"Allocating post list buffer\n");
   P->neps   = Malloc(nfile*sizeof(int64),"Allocating parts table of Post_List");
@@ -730,15 +736,24 @@ static void *new_merge_thread(void *args)
           ctop = cp;
           ctop[LBYTE] = 11;
 
-          //  if cache is empty then skip to next T1 entry with a greater prefix than cpre
+          //  if cache is empty then skip T1 forward to T2's current prefix
+          //  (T2->cpre is already past cpre since no entries matched)
 
           if (ctop == cache)
-            { while (T1->cpre == cpre)
-                Next_Kmer_Entry(T1);
+            { int    npre = T2->cpre;  //  T2 is already at its next non-empty prefix
+              int64  t1_start;
+
+              if (T2->csuf == NULL)     //  T2 exhausted
+                break;
+
+              //  jump T1 to the start of prefix npre (where T2 has entries)
+              t1_start = (npre > 0) ? T1->index[npre-1] : 0;
+              if (t1_start >= tend)
+                break;                  //  no more work for this thread
 #ifdef DEBUG_MERGE
-              printf(" ... Empty => to %06x in T1\n",T1->cpre);
+              printf(" ... Empty => skip to T2's prefix %06x (T1 idx %lld)\n",npre,t1_start);
 #endif
-              GoTo_Kmer_Index(T1,T1->cidx-1);
+              GoTo_Kmer_Index(T1,t1_start > 0 ? t1_start-1 : 0);
               continue;
             }
 
@@ -4471,6 +4486,7 @@ int main(int argc, char *argv[])
     if (SORT_PATH == NULL)
       SORT_PATH = ".";
     NTHREADS    = 8;
+    NCHUNKS     = 0;
 
     OUT_TYPE    = 0;
     OUT_OPT     = 0;
@@ -4577,6 +4593,13 @@ int main(int argc, char *argv[])
             break;
           case 'T':
             ARG_NON_NEGATIVE(NTHREADS,"number of threads to use");
+            break;
+          case 'C':
+            ARG_NON_NEGATIVE(NCHUNKS,"number of GIX chunks");
+            if (NCHUNKS < 2)
+              { fprintf(stderr,"%s: -C chunk count must be >= 2\n",Prog_Name);
+                exit (1);
+              }
             break;
         }
       else if (argv[i][0] == '#')
@@ -4820,11 +4843,13 @@ int main(int argc, char *argv[])
           }
 
         if (LOG_FILE)
-          nchar = sprintf(command,"GIXmake%s -L:%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",LOG_PATH,NTHREADS,SORT_PATH,tpath2);
+          nchar = sprintf(command,"GIXmake%s%s -L:%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+                          LOG_PATH,NTHREADS,SORT_PATH,tpath2);
         else
-          nchar = sprintf(command,"GIXmake%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NTHREADS,SORT_PATH,tpath2);
+          nchar = sprintf(command,"GIXmake%s%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+                          NTHREADS,SORT_PATH,tpath2);
         for (k = 0; k < NMASK2; k++)
           nchar += sprintf(command+nchar," #%s",MF2[k]);
         if (system(command) != 0)
@@ -4904,9 +4929,13 @@ int main(int argc, char *argv[])
       int csize2 = P2->pbyte + 1 + P2->has_mask;
 
       NEW_GIX = 1;
+      if (!P1->has_lcp) csize1 = -csize1;
+      if (!P2->has_lcp) csize2 = -csize2;
       T1 = Open_Kmer_Stream(Catenate(PATH1,"/",ROOT1,".gix"),csize1);
       if (SELF)
         T2 = T1;
+      else if (NCHUNKS > 0)
+        T2 = NULL;   //  In chunk mode, genome2 has no ktab files (built with -n)
       else
         T2 = Open_Kmer_Stream(Catenate(PATH2,"/",ROOT2,".gix"),csize2);
     }
@@ -4922,7 +4951,7 @@ int main(int argc, char *argv[])
     { fprintf(stderr,"%s: Cannot find genome index for %s/%s.gix\n",Prog_Name,PATH1,ROOT1);
       Clean_Exit(1);
     }
-  if (T2 == NULL)
+  if (T2 == NULL && NCHUNKS == 0)
     { fprintf(stderr,"%s: Cannot find genome index for %s/%s.gix\n",Prog_Name,PATH2,ROOT2);
       Clean_Exit(1);
     }
@@ -4989,7 +5018,7 @@ int main(int argc, char *argv[])
           Clean_Exit(1);
         }
     }
-  if (T1->kmer != T2->kmer)
+  if (T2 != NULL && T1->kmer != T2->kmer)
     { fprintf(stderr,"%s: Indices not made with the same k-mer size (%d vs %d)\n",
                      Prog_Name,T1->kmer,T2->kmer);
       Clean_Exit(1);
@@ -5026,17 +5055,20 @@ int main(int argc, char *argv[])
   JPOST = JBYTE-JCONT;
   JSIGN = JBYTE-1;
 
-  KBYTE = T2->pbyte;
-  if (P2->has_mask)
-    { CBYTE  = T2->hbyte;
-      LBYTE  = CBYTE+1;
-      PAYOFF = LBYTE+1;
-    }
-  else
-    { CBYTE  = -1;
-      LBYTE  = T2->hbyte;
-      PAYOFF = LBYTE+1;
-    }
+  { Kmer_Stream *Tref = (T2 != NULL) ? T2 : T1;  //  In chunk mode T2 is NULL, use T1
+
+    KBYTE = Tref->pbyte;
+    if (P2->has_mask)
+      { CBYTE  = Tref->hbyte;
+        LBYTE  = CBYTE+1;
+        PAYOFF = LBYTE+1;
+      }
+    else
+      { CBYTE  = -1;
+        LBYTE  = Tref->hbyte;
+        PAYOFF = LBYTE+1;
+      }
+  }
   
   ESHIFT = 8*IPOST;
 
@@ -5170,50 +5202,155 @@ int main(int argc, char *argv[])
       }
 #endif
 
-    if (SELF)
-      self_adaptamer_merge(T1,P1,gdb1->seqtot);
+    if (NCHUNKS > 0 && !SELF && NEW_GIX)
+
+      //  Chunk-wise merge (Opt 7): rebuild genome2's GIX in K chunks,
+      //    merging each chunk's seeds incrementally. Reduces peak storage
+      //    from genome1 + genome2 to genome1 + genome2/K.
+
+      { int    g2_nparts = P2->nthr;   //  Use P2 (from .gix stub), T2 may be NULL in chunk mode
+        int    parts_per_chunk, cfirst, clast, chunk;
+        int    csize2 = P2->pbyte + 1 + P2->has_mask;
+        char  *cmd;
+
+        if (!P2->has_lcp) csize2 = -csize2;
+
+        //  Free genome1's stream (we'll reopen per-chunk). T2 is NULL in chunk mode.
+        Free_Kmer_Stream(T1);
+
+        //  With -n flag, genome2's GIXmake wrote only the .gix stub (no ktab files),
+        //    so there's nothing to delete here.  Peak storage was never genome1 + genome2.
+
+        if (VERBOSE)
+          fprintf(stderr,"\n  Chunk-wise merge: %d chunks of %d partitions\n",
+                         NCHUNKS,g2_nparts);
+
+        parts_per_chunk = (g2_nparts + NCHUNKS - 1) / NCHUNKS;
+
+        cmd = Malloc(strlen(PATH2)+strlen(ROOT2)+strlen(SORT_PATH)+
+                     (LOG_PATH?strlen(LOG_PATH):0)+200,"Allocating chunk command");
+
+        for (chunk = 0; chunk < NCHUNKS; chunk++)
+          { cfirst = chunk * parts_per_chunk + 1;
+            clast  = (chunk + 1) * parts_per_chunk;
+            if (clast > g2_nparts) clast = g2_nparts;
+            if (cfirst > g2_nparts) break;
+
+            if (VERBOSE)
+              fprintf(stderr,"\n  --- Chunk %d/%d (partitions %d-%d) ---\n",
+                             chunk+1,NCHUNKS,cfirst,clast);
+
+            //  Build genome2's chunk GIX
+
+            if (LOG_FILE)
+              { fclose(LOG_FILE);
+                sprintf(cmd,"GIXmake%s -L:%s -C%d:%d -T%d -P%s %s/%s",
+                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,NTHREADS,SORT_PATH,PATH2,ROOT2);
+              }
+            else
+              sprintf(cmd,"GIXmake%s -C%d:%d -T%d -P%s %s/%s",
+                      VERBOSE?" -v":"",cfirst,clast,NTHREADS,SORT_PATH,PATH2,ROOT2);
+            if (system(cmd) != 0)
+              { fprintf(stderr,"\n%s: GIXmake chunk %d failed\n",Prog_Name,chunk+1);
+                Clean_Exit(1);
+              }
+            if (LOG_PATH)
+              LOG_FILE = fopen(LOG_PATH,"a");
+
+            //  Open streams for this chunk
+
+            { int csize1 = P1->pbyte + 1 + P1->has_mask;
+              if (!P1->has_lcp) csize1 = -csize1;
+              T1 = Open_Kmer_Stream(Catenate(PATH1,"/",ROOT1,".gix"),csize1);
+            }
+            T2 = Open_Kmer_Stream(Catenate(PATH2,"/",ROOT2,".gix"),csize2);
+
+            if (T1 == NULL || T2 == NULL)
+              { fprintf(stderr,"%s: Cannot open streams for chunk %d\n",Prog_Name,chunk+1);
+                Clean_Exit(1);
+              }
+
+            //  Merge this chunk (T1/T2 freed inside)
+
+            adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
+
+            //  Delete genome2's chunk files
+
+            { int p;
+              char *gname = Malloc(strlen(PATH2)+strlen(ROOT2)+30,"chunk name");
+              for (p = 1; p <= clast - cfirst + 1; p++)
+                { sprintf(gname,"%s/.%s.ktab.%d",PATH2,ROOT2,p);
+                  unlink(gname);
+                }
+              free(gname);
+            }
+          }
+
+        free(cmd);
+
+        //  Delete genome2's .gix stub
+        if (!KEEP && TYPE2 <= IS_GDB)
+          { char *gname = Malloc(strlen(PATH2)+strlen(ROOT2)+30,"chunk name");
+            sprintf(gname,"%s/%s.gix",PATH2,ROOT2);
+            unlink(gname);
+            free(gname);
+            TYPE2 = IS_GDB + 1;
+          }
+
+        //  Delete genome1's GIX (early deletion)
+        if (!KEEP && TYPE1 <= IS_GDB)
+          { char *gixcmd = Malloc(strlen(PATH1)+strlen(ROOT1)+100,"Allocating command string");
+            sprintf(gixcmd,"GIXrm -f %s/%s.gix",PATH1,ROOT1);
+            system(gixcmd);
+            free(gixcmd);
+            TYPE1 = IS_GDB + 1;
+          }
+
+      }
+
     else
-      adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
+
+      //  Normal single-pass merge
+
+      { if (SELF)
+          self_adaptamer_merge(T1,P1,gdb1->seqtot);
+        else
+          adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
+
+        //  Early GIX deletion: GIX files are only needed during seed merge.
+        //    Delete them now to free disk space for the sort+align phase.
+        //    Only delete GIX we generated (not user-provided), and only if -k is not set.
+        //    Use -f (not -fg) to preserve the GDB which is still needed for alignment.
+
+        if ( ! KEEP)
+          { char *command;
+
+            if (TYPE2 <= IS_GDB)
+              command = Malloc(strlen(PATH1)+strlen(ROOT1)+
+                               strlen(PATH2)+strlen(ROOT2)+100,"Allocating command string");
+            else
+              command = Malloc(strlen(PATH1)+strlen(ROOT1)+100,"Allocating command string");
+
+            if (command != NULL)
+              { if (TYPE1 <= IS_GDB)
+                  { sprintf(command,"GIXrm -f %s/%s.gix",PATH1,ROOT1);
+                    system(command);
+                    TYPE1 = IS_GDB + 1;
+                  }
+                if (TYPE2 <= IS_GDB)
+                  { sprintf(command,"GIXrm -f %s/%s.gix",PATH2,ROOT2);
+                    system(command);
+                    TYPE2 = IS_GDB + 1;
+                  }
+                free(command);
+              }
+          }
+      }
 
     if (VERBOSE)
       TimeTo(stderr,0,LOG_FILE==NULL);
     if (LOG_FILE)
       TimeTo(LOG_FILE,0,1);
-
-    //  Free Post_Lists (no longer needed after seed merge)
-
-    if ( ! SELF)
-      Free_Post_List(P2);
-    Free_Post_List(P1);
-
-    //  Early GIX deletion: GIX files are only needed during seed merge.
-    //    Delete them now to free disk space for the sort+align phase.
-    //    Only delete GIX we generated (not user-provided), and only if -k is not set.
-    //    Use -f (not -fg) to preserve the GDB which is still needed for alignment.
-
-    if ( ! KEEP)
-      { char *command;
-
-        if (TYPE2 <= IS_GDB)
-          command = Malloc(strlen(PATH1)+strlen(ROOT1)+
-                           strlen(PATH2)+strlen(ROOT2)+100,"Allocating command string");
-        else
-          command = Malloc(strlen(PATH1)+strlen(ROOT1)+100,"Allocating command string");
-
-        if (command != NULL)
-          { if (TYPE1 <= IS_GDB)
-              { sprintf(command,"GIXrm -f %s/%s.gix",PATH1,ROOT1);
-                system(command);
-                TYPE1 = IS_GDB + 1;
-              }
-            if (TYPE2 <= IS_GDB)
-              { sprintf(command,"GIXrm -f %s/%s.gix",PATH2,ROOT2);
-                system(command);
-                TYPE2 = IS_GDB + 1;
-              }
-            free(command);
-          }
-      }
 
     //  Transpose N_unit & C_unit matrices
 
@@ -5336,6 +5473,10 @@ int main(int argc, char *argv[])
   if ( ! SELF)
     Close_GDB(gdb2);
   Close_GDB(gdb1);
+
+  if ( ! SELF)
+    Free_Post_List(P2);
+  Free_Post_List(P1);
 
   free(SORT_PATH);
 
