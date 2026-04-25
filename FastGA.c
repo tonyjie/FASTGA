@@ -2383,8 +2383,7 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
         parm[i].cache = cache + i * (P2->maxp+1) * KBYTE;
       parm[i].nunit = nu = N_Units + i * NPARTS;
       parm[i].cunit = cu = C_Units + i * NPARTS;
-      bzero(nu[0].buck,sizeof(int64)*NCONTS);
-      bzero(cu[0].buck,sizeof(int64)*NCONTS);
+      (void)nu; (void)cu;
       parm[i].flip = 0;
     }
 
@@ -2584,8 +2583,7 @@ static void self_adaptamer_merge(Kmer_Stream *T1, Post_List *P1, int64 g1len)
       parm[i].cache = cache + i * (P1->maxp+1) * KBYTE;
       parm[i].nunit = nu = N_Units + i * NPARTS;
       parm[i].cunit = cu = C_Units + i * NPARTS;
-      bzero(nu[0].buck,sizeof(int64)*NCONTS);
-      bzero(cu[0].buck,sizeof(int64)*NCONTS);
+      (void)nu; (void)cu;
     }
 
   if (NEW_GIX)
@@ -4799,11 +4797,13 @@ int main(int argc, char *argv[])
           }
 
         if (LOG_FILE)
-          nchar = sprintf(command,"GIXmake%s -L:%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",LOG_PATH,NTHREADS,SORT_PATH,tpath1);
+          nchar = sprintf(command,"GIXmake%s%s -L:%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+                          LOG_PATH,NTHREADS,SORT_PATH,tpath1);
         else
-          nchar = sprintf(command,"GIXmake%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NTHREADS,SORT_PATH,tpath1);
+          nchar = sprintf(command,"GIXmake%s%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+                          NTHREADS,SORT_PATH,tpath1);
         for (k = 0; k < NMASK1; k++)
           nchar += sprintf(command+nchar," #%s",MF1[k]);
         if (system(command) != 0)
@@ -4842,13 +4842,20 @@ int main(int argc, char *argv[])
               }
           }
 
+        //  Opt 8 bilateral chunking: g2 inherits g1's partition boundaries via sidecar.
+        //  g1 was just built with -n, so its sidecar $PATH1/.$ROOT1.split exists.
+        char xflag[1024];
+        xflag[0] = '\0';
+        if (NCHUNKS > 0)
+          snprintf(xflag,sizeof(xflag)," -X%s/.%s.split",PATH1,ROOT1);
+
         if (LOG_FILE)
-          nchar = sprintf(command,"GIXmake%s%s -L:%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+          nchar = sprintf(command,"GIXmake%s%s%s -L:%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",xflag,
                           LOG_PATH,NTHREADS,SORT_PATH,tpath2);
         else
-          nchar = sprintf(command,"GIXmake%s%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+          nchar = sprintf(command,"GIXmake%s%s%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",xflag,
                           NTHREADS,SORT_PATH,tpath2);
         for (k = 0; k < NMASK2; k++)
           nchar += sprintf(command+nchar," #%s",MF2[k]);
@@ -4931,13 +4938,19 @@ int main(int argc, char *argv[])
       NEW_GIX = 1;
       if (!P1->has_lcp) csize1 = -csize1;
       if (!P2->has_lcp) csize2 = -csize2;
-      T1 = Open_Kmer_Stream(Catenate(PATH1,"/",ROOT1,".gix"),csize1);
-      if (SELF)
-        T2 = T1;
-      else if (NCHUNKS > 0)
-        T2 = NULL;   //  In chunk mode, genome2 has no ktab files (built with -n)
+      //  Opt 8: in bilateral chunk mode both genomes are built with -n
+      //  (stub-only), so defer opening T1/T2 until the chunk loop.
+      if (NCHUNKS > 0 && !SELF)
+        { T1 = NULL;
+          T2 = NULL;
+        }
       else
-        T2 = Open_Kmer_Stream(Catenate(PATH2,"/",ROOT2,".gix"),csize2);
+        { T1 = Open_Kmer_Stream(Catenate(PATH1,"/",ROOT1,".gix"),csize1);
+          if (SELF)
+            T2 = T1;
+          else
+            T2 = Open_Kmer_Stream(Catenate(PATH2,"/",ROOT2,".gix"),csize2);
+        }
     }
   else
     { NEW_GIX = 0;
@@ -4947,7 +4960,7 @@ int main(int argc, char *argv[])
       else
         T2 = Open_Kmer_Stream(Catenate(PATH2,"/",ROOT2,".gix"),2);
     }
-  if (T1 == NULL)
+  if (T1 == NULL && NCHUNKS == 0)
     { fprintf(stderr,"%s: Cannot find genome index for %s/%s.gix\n",Prog_Name,PATH1,ROOT1);
       Clean_Exit(1);
     }
@@ -4958,7 +4971,7 @@ int main(int argc, char *argv[])
 
   Perm1  = P1->perm;
   Perm2  = P2->perm;
-  KMER   = T1->kmer;
+  KMER   = (T1 != NULL) ? T1->kmer : 40;   //  Opt 8: in chunk mode T1 is deferred; FastGA always uses K=40
 
   { FILE *file;
     char *fname;
@@ -5055,17 +5068,29 @@ int main(int argc, char *argv[])
   JPOST = JBYTE-JCONT;
   JSIGN = JBYTE-1;
 
-  { Kmer_Stream *Tref = (T2 != NULL) ? T2 : T1;  //  In chunk mode T2 is NULL, use T1
+  { Kmer_Stream *Tref = (T2 != NULL) ? T2 : T1;  //  In chunk mode streams may be deferred
 
-    KBYTE = Tref->pbyte;
+    //  Opt 8 bilateral chunking: both T1 and T2 are NULL before chunk loop.
+    //  Derive geometry from stub constants (KMER=40 ⇒ kbyte=10, ibyte=3 ⇒ hbyte=7)
+    //  plus Post_List's pbyte/has_mask/has_lcp.
+    int hbyte_val, kbyte_val;
+    if (Tref != NULL)
+      { kbyte_val = Tref->pbyte;
+        hbyte_val = Tref->hbyte;
+      }
+    else
+      { hbyte_val = 7;   //  kbyte(10) - ibyte(3)
+        kbyte_val = hbyte_val + P2->pbyte + (P2->has_lcp ? 1 : 0) + (P2->has_mask ? 1 : 0);
+      }
+    KBYTE = kbyte_val;
     if (P2->has_mask)
-      { CBYTE  = Tref->hbyte;
+      { CBYTE  = hbyte_val;
         LBYTE  = CBYTE+1;
         PAYOFF = LBYTE+1;
       }
     else
       { CBYTE  = -1;
-        LBYTE  = Tref->hbyte;
+        LBYTE  = hbyte_val;
         PAYOFF = LBYTE+1;
       }
   }
@@ -5202,11 +5227,23 @@ int main(int argc, char *argv[])
       }
 #endif
 
+    //  Zero per-thread per-contig seed bucket counts ONCE per merge run.
+    //  Previously this lived inside (self_)adaptamer_merge, but that zeroed
+    //  the cumulative counters on every chunk pass, leaving only the last
+    //  chunk's contribution and silently corrupting the sort/align phase.
+    //  Lifecycle of buck[] belongs to the caller.
+    { int i;
+      for (i = 0; i < NTHREADS; i++)
+        { bzero(N_Units[i*NPARTS].buck,sizeof(int64)*NCONTS);
+          bzero(C_Units[i*NPARTS].buck,sizeof(int64)*NCONTS);
+        }
+    }
+
     if (NCHUNKS > 0 && !SELF && NEW_GIX)
 
-      //  Chunk-wise merge (Opt 7): rebuild genome2's GIX in K chunks,
-      //    merging each chunk's seeds incrementally. Reduces peak storage
-      //    from genome1 + genome2 to genome1 + genome2/K.
+      //  Chunk-wise merge (Opt 7/8): rebuild chunk GIX, merge each chunk
+      //    incrementally into the same temp files. buck[] accumulates
+      //    across chunks (no per-chunk zero — see above).
 
       { int    g2_nparts = P2->nthr;   //  Use P2 (from .gix stub), T2 may be NULL in chunk mode
         int    parts_per_chunk, cfirst, clast, chunk;
@@ -5215,8 +5252,11 @@ int main(int argc, char *argv[])
 
         if (!P2->has_lcp) csize2 = -csize2;
 
-        //  Free genome1's stream (we'll reopen per-chunk). T2 is NULL in chunk mode.
-        Free_Kmer_Stream(T1);
+        //  Free genome1's stream (we'll reopen per-chunk). In bilateral-chunk
+        //  mode (Opt 8) T1 was deferred and is already NULL; only the Opt 7
+        //  single-sided path had a live T1 here.
+        if (T1 != NULL)
+          Free_Kmer_Stream(T1);
 
         //  With -n flag, genome2's GIXmake wrote only the .gix stub (no ktab files),
         //    so there's nothing to delete here.  Peak storage was never genome1 + genome2.
@@ -5240,18 +5280,39 @@ int main(int argc, char *argv[])
               fprintf(stderr,"\n  --- Chunk %d/%d (partitions %d-%d) ---\n",
                              chunk+1,NCHUNKS,cfirst,clast);
 
-            //  Build genome2's chunk GIX
+            //  Opt 8: build genome1's chunk GIX (both genomes share g1's sidecar Ksplit)
 
             if (LOG_FILE)
               { fclose(LOG_FILE);
-                sprintf(cmd,"GIXmake%s -L:%s -C%d:%d -T%d -P%s %s/%s",
-                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,NTHREADS,SORT_PATH,PATH2,ROOT2);
+                sprintf(cmd,"GIXmake%s -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,PATH1,ROOT1,
+                        NTHREADS,SORT_PATH,PATH1,ROOT1);
               }
             else
-              sprintf(cmd,"GIXmake%s -C%d:%d -T%d -P%s %s/%s",
-                      VERBOSE?" -v":"",cfirst,clast,NTHREADS,SORT_PATH,PATH2,ROOT2);
+              sprintf(cmd,"GIXmake%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+                      VERBOSE?" -v":"",cfirst,clast,PATH1,ROOT1,
+                      NTHREADS,SORT_PATH,PATH1,ROOT1);
             if (system(cmd) != 0)
-              { fprintf(stderr,"\n%s: GIXmake chunk %d failed\n",Prog_Name,chunk+1);
+              { fprintf(stderr,"\n%s: GIXmake g1 chunk %d failed\n",Prog_Name,chunk+1);
+                Clean_Exit(1);
+              }
+            if (LOG_PATH)
+              LOG_FILE = fopen(LOG_PATH,"a");
+
+            //  Build genome2's chunk GIX (inherits g1's Ksplit via -X)
+
+            if (LOG_FILE)
+              { fclose(LOG_FILE);
+                sprintf(cmd,"GIXmake%s -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,PATH1,ROOT1,
+                        NTHREADS,SORT_PATH,PATH2,ROOT2);
+              }
+            else
+              sprintf(cmd,"GIXmake%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+                      VERBOSE?" -v":"",cfirst,clast,PATH1,ROOT1,
+                      NTHREADS,SORT_PATH,PATH2,ROOT2);
+            if (system(cmd) != 0)
+              { fprintf(stderr,"\n%s: GIXmake g2 chunk %d failed\n",Prog_Name,chunk+1);
                 Clean_Exit(1);
               }
             if (LOG_PATH)
@@ -5273,6 +5334,17 @@ int main(int argc, char *argv[])
             //  Merge this chunk (T1/T2 freed inside)
 
             adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
+
+            //  Delete genome1's chunk files (Opt 8 bilateral chunking)
+
+            { int p;
+              char *gname = Malloc(strlen(PATH1)+strlen(ROOT1)+30,"chunk name");
+              for (p = 1; p <= clast - cfirst + 1; p++)
+                { sprintf(gname,"%s/.%s.ktab.%d",PATH1,ROOT1,p);
+                  unlink(gname);
+                }
+              free(gname);
+            }
 
             //  Delete genome2's chunk files
 
