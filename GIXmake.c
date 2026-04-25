@@ -65,6 +65,9 @@ static int CHUNK_FIRST;  //  First partition to output (0-based), default 0
 static int CHUNK_LAST;   //  Last partition to output (0-based, inclusive), default NPARTS-1
 static int CHUNKED;      //  Non-zero if -C flag was given
 static int STUB_ONLY;    //  -n: write .gix stub only, no ktab partition files
+static char *REF_STUB;   //  -X <path>: path to reference .gix stub to inherit NPARTS/Ksplit from
+static int   REF_NPARTS;          //  NPARTS read from reference stub (used when REF_STUB != NULL)
+static int  *REF_KSPLIT;          //  Ksplit read from reference stub (NPARTS+1 entries)
 
 #define BUFF_MAX   1000000
 #define SCAN_MAX  10000000    //  Must be divisible by 4
@@ -615,9 +618,53 @@ static void *scan_thread(void *args)
   return (NULL);
 }
 
+//  Sidecar .split file format (Opt 8 bilateral chunking):
+//    int  NPARTS
+//    int  Ksplit[NPARTS+1]
+//  Written by write_ksplit_sidecar once Ksplit is finalized, read by read_ksplit_sidecar
+//  when -X <path> is given. This lets genome2 inherit genome1's partition boundaries
+//  even after the main .gix stub is overwritten by chunk builds.
+
+static int read_ksplit_sidecar(char *path, int *nparts_out, int **ksplit_out)
+{ int  fd, nparts, *ksplit;
+
+  fd = open(path,O_RDONLY);
+  if (fd < 0)
+    { fprintf(stderr,"%s: -X cannot open sidecar %s\n",Prog_Name,path);
+      return (-1);
+    }
+  if (read(fd,&nparts,sizeof(int)) != sizeof(int))
+    { close(fd); return (-1); }
+  ksplit = Malloc((nparts+1)*sizeof(int),"Allocating ref Ksplit");
+  if (ksplit == NULL) { close(fd); return (-1); }
+  if (read(fd,ksplit,(nparts+1)*sizeof(int)) != (ssize_t)((nparts+1)*sizeof(int)))
+    { fprintf(stderr,"%s: -X sidecar %s truncated\n",Prog_Name,path);
+      free(ksplit); close(fd); return (-1);
+    }
+  close(fd);
+  *nparts_out = nparts;
+  *ksplit_out = ksplit;
+  return (0);
+}
+
+static void write_ksplit_sidecar(char *tpath, char *troot)
+{ char *sname;
+  int   fd;
+
+  sname = Malloc(strlen(tpath)+strlen(troot)+20,"Allocating sidecar path");
+  if (sname == NULL) return;
+  sprintf(sname,"%s/.%s.split",tpath,troot);
+  fd = open(sname,O_WRONLY|O_CREAT|O_TRUNC,0666);
+  if (fd < 0) { free(sname); return; }
+  write(fd,&NPARTS,sizeof(int));
+  write(fd,Ksplit,(NPARTS+1)*sizeof(int));
+  close(fd);
+  free(sname);
+}
+
 //  Create a thread for each DB section, and have it distribute syncmer posts to NTHREAD files
 //     according to the 1st byte of its k-mer.
-  
+
 void distribute(GDB *gdb)
 { DP      parm[NTHREADS];
   uint8  *buff, *seq;
@@ -674,26 +721,44 @@ void distribute(GDB *gdb)
     for (i = 1; i < NUM_BUCK; i++)
       buck[i] = buck[i-1] + buck[i];
 
-    Ksplit[0] = 0;
-    n = 1;
-    t = buck[NUM_BUCK-1]/NPARTS;
-    for (i = 0; i < NUM_BUCK; i++)
-      { if (buck[i] >= t)
-          { if (buck[i]-t > t-buck[i-1])
-              { Select[i] = n;
-                Ksplit[n] = i;
+    if (REF_KSPLIT != NULL)
+      {
+        //  -X: inherit Ksplit from reference stub (Opt 8: bilateral chunking).
+        //  Both genomes must partition by the same prefix boundaries so chunk i
+        //  of g1 only has matches with chunk i of g2.
+        int p;
+        for (i = 0; i <= NPARTS; i++)
+          Ksplit[i] = REF_KSPLIT[i];
+        p = 0;
+        for (i = 0; i < NUM_BUCK; i++)
+          { while (p < NPARTS && Ksplit[p+1] <= i) p += 1;
+            Select[i] = p;
+          }
+        (void)n; (void)t;
+      }
+    else
+      {
+        Ksplit[0] = 0;
+        n = 1;
+        t = buck[NUM_BUCK-1]/NPARTS;
+        for (i = 0; i < NUM_BUCK; i++)
+          { if (buck[i] >= t)
+              { if (buck[i]-t > t-buck[i-1])
+                  { Select[i] = n;
+                    Ksplit[n] = i;
+                  }
+                else
+                  { Select[i] = n-1;
+                    Ksplit[n] = i+1;
+                  }
+                n += 1;
+                t = (n*buck[NUM_BUCK-1])/NPARTS;
               }
             else
-              { Select[i] = n-1;
-                Ksplit[n] = i+1;
-              }
-            n += 1;
-            t = (n*buck[NUM_BUCK-1])/NPARTS;
+              Select[i] = n-1;
           }
-        else
-          Select[i] = n-1;
+        Ksplit[NPARTS] = NUM_BUCK;
       }
-    Ksplit[NPARTS] = NUM_BUCK;
 
 #ifdef DEBUG_SETUP
     printf("Prepatory %lld\n",buck[NUM_BUCK-1]);
@@ -1668,6 +1733,9 @@ int main(int argc, char *argv[])
     CHUNK_LAST  = -1;
     CHUNKED     = 0;
     STUB_ONLY   = 0;
+    REF_STUB    = NULL;
+    REF_NPARTS  = 0;
+    REF_KSPLIT  = NULL;
 
     j = 1;
     for (i = 1; i < argc; i++)
@@ -1708,6 +1776,9 @@ int main(int argc, char *argv[])
               CHUNK_LAST  = cl - 1;
               CHUNKED     = 1;
             }
+            break;
+          case 'X':
+            REF_STUB = argv[i]+2;
             break;
         }
       else if (argv[i][0] == '#')
@@ -1940,6 +2011,15 @@ int main(int argc, char *argv[])
     else if (NPARTS > 64)
       NPARTS = 64;
 
+    //  -X: override NPARTS and Ksplit from sidecar (Opt 8 bilateral chunking)
+    if (REF_STUB != NULL)
+      { if (read_ksplit_sidecar(REF_STUB,&REF_NPARTS,&REF_KSPLIT) < 0)
+          exit (1);
+        NPARTS = REF_NPARTS;
+        if (VERBOSE)
+          fprintf(stderr,"  -X: inherited NPARTS=%d from %s\n",NPARTS,REF_STUB);
+      }
+
     Ksplit = Malloc((NPARTS+1)*sizeof(int),"Allocating split vector");
 
     if (CHUNK_FIRST < 0)
@@ -2044,6 +2124,13 @@ int main(int argc, char *argv[])
     
   distribute(gdb);   //  Distribute k-mers to 1st byte partitions, encoded as compressed
                      //    relative positions of the given k-mers
+
+  //  Opt 8: write sidecar with NPARTS + Ksplit so other genomes can inherit via -X.
+  //  Only write when not in chunk mode (chunks shouldn't clobber the sidecar from the
+  //  earlier -n pass). Written once during the initial -n pass.
+  if (!CHUNKED)
+    write_ksplit_sidecar(TPATH,TROOT);
+
   if (VERBOSE)
     { TimeTo(stderr,0,LOG_FILE==NULL);
       fprintf(stderr,"\n  Starting sort & index output of each part\n");

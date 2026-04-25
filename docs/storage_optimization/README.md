@@ -33,6 +33,8 @@ See [optimization_plan.md](optimization_plan.md) for the full plan with 6 identi
 |---|---|---|---|---|---|
 | 1 | [Early GIX Deletion](opt1_early_gix_deletion.md) | Frees ~1,860 MB during sort+align (EXAMPLE) / ~63 GB (human) | Bit-exact | Implemented, verified | Docs: `049e311`, Code: `77ac29d` |
 | 3 | [Eliminate Mask Byte](opt3_eliminate_mask_byte.md) | -7.7% ktab size = -124 MB (EXAMPLE) / -4.6 GB (human) | Bit-exact | Implemented, verified | Docs: `6460e0a`, Code: `ea31b73` |
+| 7 | [Chunk-wise GIX (single-sided)](opt7_chunkwise_gix.md) | -36% peak (EXAMPLE) / projected -37% (human) | Bit-exact (after Opt 8 buck-bzero fix) | Implemented; alignment-level verification only after Opt 8 fix | Code: `685a071` |
+| 8 | [Bilateral Chunking](opt8_bilateral_chunking.md) | **-60.2% peak (1,810 → 721 MB)** on EXAMPLE; projected **-69%** (human, ~20 GB peak) | Bit-exact (51,082,720 seeds + 323,569 alignments verified) | Implemented, verified end-to-end | Uncommitted (working tree) |
 
 ## Cumulative Effect
 
@@ -55,7 +57,6 @@ With Opt 1 + Opt 3 combined:
 | 4 | On-the-fly LCP | -8.3% ktab = -127 MB (EXAMPLE) / -4.5 GB (human) | Bit-exact | **Verified** — full pipeline exact match (seeds + alignments) |
 | 5 | [Ktab Compression](opt5_ktab_compression.md) | ~14% ktab reduction (not 30-50% as projected) | Bit-exact (intended) | **FAILED** — decompression round-trip bug, reverted |
 | 6 | Aggressive syncmer filtering | ~40% ktab reduction | Trade-off | Not started |
-| 7 | [Chunk-wise GIX](opt7_chunkwise_gix.md) | **-23.4 GB peak (-37%)** with `-n` stub mode (K=4, human) | Bit-exact | **Verified** — 36% peak reduction measured, 18x merge regression |
 
 ## Comprehensive Report
 
