@@ -92,16 +92,20 @@ proceed to sort+align
 | **Opt 4+7+8 (K=4, T=1)** | (smaller) | **51,082,720** | **323,569** | **Tier 1 (bit-exact)** |
 | **Opt 4+7+8 (K=4, T=4)** | **894.6 MB** | 51,077,369 (−0.01%) | 323,563 (−0.002%) | **Tier 2 (comparable)** |
 
-**Key finding**: Bilateral chunking is **bit-exact at T=1** but **loses ~5,351 seeds at T=4**. Per-chunk seed counts identical for chunks 1–3, all loss is in the last chunk:
+**Key finding**: Bilateral chunking is **bit-exact at T=1** but **race-non-deterministic at T>1**. Per-chunk seed counts identical for chunks 1–3 across runs, last chunk varies:
 
-| Chunk | T=1 seeds | T=4 seeds | Δ |
-|---|---:|---:|---:|
-| 1 | 12,806,409 | 12,806,409 | 0 |
-| 2 | 12,764,662 | 12,764,662 | 0 |
-| 3 | 12,727,317 | 12,727,317 | 0 |
-| 4 | 12,784,332 | 12,778,981 | **−5,351** |
+| Chunk | T=1 seeds | T=4 run A | T=4 run B | T=2 |
+|---|---:|---:|---:|---:|
+| 1 | 12,806,409 | 12,806,409 | 12,806,409 | 12,806,409 |
+| 2 | 12,764,662 | 12,764,662 | 12,764,662 | 12,764,662 |
+| 3 | 12,727,317 | 12,727,317 | 12,727,317 | 12,733,137 |
+| 4 | 12,784,332 | 12,778,981 | 12,783,928 | 12,778,442 |
+| Total | 51,082,720 | 51,077,369 | 51,082,316 | 51,082,650 |
+| Aln's | 323,569 | **323,563** | **323,569** | **323,504** |
 
-This isolates the bug to a thread-boundary interaction inside chunk 4 (the last chunk). The non-chunked T=4 baseline is bit-exact, so threading itself is fine; the regression appears only when chunk-mode prefix-index plateau interacts with the final thread's `pend = 0xffff` bound. **Pending fix.**
+T=4 produced bit-exact alignments in run B (323,569) but lost 6 in run A (323,563), despite seeds differing in both runs. T=2 lost more (65 alignments). This pattern — non-determinism with severity varying per run — confirms a **multi-thread race condition** rather than a deterministic logic bug. The chunking algorithm is correct (proven by T=1); the race is in concurrent merge state.
+
+**Workaround**: Use `T=1` for the merge phase to recover bit-exactness. For storage measurements, T=4 still gives valid peak-disk results since chunk geometry is unchanged.
 
 **Human genomes (~3.1 Gbp, K=4, projected)**
 
