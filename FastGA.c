@@ -2325,10 +2325,18 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
     int   t;
     int64 p;
 
+    //  Opt 8 fix: parm-split previously called GoTo_Kmer_Index on the original
+    //  T1/T2 stream, leaving it stranded mid-stream. Tid=0 then reused that
+    //  same original stream and depended on First_Kmer_Entry to rewind it —
+    //  but with chunked GIX + Opt 4 LCP recompute that rewind path had stale
+    //  state across runs. Use a throwaway clone for the split scan instead so
+    //  the originals stay untouched.
+    Kmer_Stream *split_tp;
     if (T1->nels > T2->nels)
-      tp = T1;
+      split_tp = Clone_Kmer_Stream(T1);
     else
-      tp = T2;
+      split_tp = Clone_Kmer_Stream(T2);
+    tp = split_tp;
     ent = Current_Entry(tp,NULL);
 #ifdef DEBUG_SPLIT
     seq = Current_Kmer(tp,NULL);
@@ -2347,6 +2355,7 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
     for (t = 0; t < NTHREADS-1; t++)
       parm[t].pend = parm[t+1].pbeg;
     parm[NTHREADS-1].pend = 0xffff;
+    Free_Kmer_Stream(split_tp);
   }
 
   parm[0].T1 = T1;
@@ -2542,24 +2551,27 @@ static void self_adaptamer_merge(Kmer_Stream *T1, Post_List *P1, int64 g1len)
     int   t;
     int64 p;
 
-    ent = Current_Entry(T1,NULL);
+    //  Opt 8 fix: scan a clone so the original T1 (used by tid=0) stays untouched
+    Kmer_Stream *split_tp = Clone_Kmer_Stream(T1);
+    ent = Current_Entry(split_tp,NULL);
 #ifdef DEBUG_SPLIT
-    seq = Current_Kmer(T1,NULL);
+    seq = Current_Kmer(split_tp,NULL);
 #endif
     parm[0].pbeg = 0;
     for (t = 1; t < NTHREADS; t++)
-      { p = (T1->nels * t) / NTHREADS;
-        GoTo_Kmer_Index(T1,p);
-        if (p >= T1->nels)
+      { p = (split_tp->nels * t) / NTHREADS;
+        GoTo_Kmer_Index(split_tp,p);
+        if (p >= split_tp->nels)
           parm[t].pbeg = 0xffff;
         else
-          { ent = Current_Entry(T1,ent);
-            parm[t].pbeg = (T1->cpre >> 8);
+          { ent = Current_Entry(split_tp,ent);
+            parm[t].pbeg = (split_tp->cpre >> 8);
           }
       }
     for (t = 0; t < NTHREADS-1; t++)
       parm[t].pend = parm[t+1].pbeg;
     parm[NTHREADS-1].pend = 0xffff;
+    Free_Kmer_Stream(split_tp);
   }
 
   parm[0].T1 = T1;
@@ -5331,9 +5343,16 @@ int main(int argc, char *argv[])
                 Clean_Exit(1);
               }
 
-            //  Merge this chunk (T1/T2 freed inside)
-
-            adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
+            //  Merge this chunk (T1/T2 freed inside).
+            //  Opt 8: force single-threaded merge in chunk mode for bit-exactness.
+            //  The chunked merge has a multi-thread race in the last chunk's tid=0
+            //  (only chunk 4 of K=4 affected, ~5K seeds out of 51M). Merge phase is
+            //  <1% of human-genome runtime so the perf hit is negligible.
+            { int saved_nthreads = NTHREADS;
+              NTHREADS = 1;
+              adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
+              NTHREADS = saved_nthreads;
+            }
 
             //  Delete genome1's chunk files (Opt 8 bilateral chunking)
 
