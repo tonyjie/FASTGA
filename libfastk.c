@@ -1280,6 +1280,7 @@ inline void First_Kmer_Entry(Kmer_Stream *_S)
 
       lseek(S->copn,sizeof(int)+sizeof(int64),SEEK_SET);
 
+      S->has_prev = 0;   //  Opt 8/Opt 4 fix: rewind invalidates stale prev_suf for LCP recompute
       More_Kmer_Stream(S);
       S->cidx = 0;
       S->cpre = 0;
