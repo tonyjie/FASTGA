@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <math.h>
 #include <pthread.h>
 #include <sys/resource.h>
@@ -420,6 +421,29 @@ part_io_error:
   exit (1);
 }
 
+//  Opt 8: NPARTS from genome1's Ksplit sidecar (same file GIXmake reads with -X).
+//  Stub-only .gix files can carry a stale nthr on genome2; chunk ranges must follow
+//  the authoritative K-mer partition count or only a prefix of partitions is merged.
+static int read_ksplit_nparts(char *path, char *root)
+{ char *sname;
+  int   fd, nparts;
+
+  sname = Malloc(strlen(path)+strlen(root)+30,"split sidecar path");
+  if (sname == NULL)
+    return (-1);
+  sprintf(sname,"%s/.%s.split",path,root);
+  fd = open(sname,O_RDONLY);
+  free(sname);
+  if (fd < 0)
+    return (-1);
+  if (read(fd,&nparts,sizeof(int)) != (ssize_t)sizeof(int))
+    { close(fd);
+      return (-1);
+    }
+  close(fd);
+  return (nparts);
+}
+
 Post_List *Clone_Post_List(Post_List *O)
 { Post_List *P;
   int copn;
@@ -694,6 +718,15 @@ static void *new_merge_thread(void *args)
   vlcp[plen] = rcur = rend = cache;
   eorun = 0;
 
+  //  Opt 7/8 fix: initialize low/hgh/top so the first T1 iteration that takes
+  //  `goto pairs` (without hitting the `range:` label) sees an empty T2 range
+  //  and skips the write loop. Otherwise we'd read garbage stack memory and
+  //  emit seeds with corrupt contig bytes, blowing up later in align_contigs.
+  //  Pre-Opt 7/8 the very first T1 entry always had LCP <= 12 so range: ran
+  //  on the first iteration; chunked mode (tid != 0) jumps to mid-stream and
+  //  can hit goto pairs first.
+  low = hgh = top = cache;
+
   qcnt = -1;
   for (tbeg = T1->cidx; T1->cidx < tend; Next_Kmer_Entry(T1))
     { suf1 = T1->csuf;
@@ -888,6 +921,15 @@ static void *new_merge_thread(void *args)
 #endif
               if (p[ISIGN] & 0x80 || (CBYTE >= 0 && p[-2] >= mlen))
                 continue;
+
+              //  NOTE: the contig byte at p+IPOST has the sign bit (ISIGN, high bit)
+              //  packed in — readers always mask it off via `jcont &= mask` in
+              //  reimport_thread (see line ~2846). Earlier debug instrumentation
+              //  added an out-of-range guard that mistook the sign bit for corrupt
+              //  contig data and silently dropped ~31% of reverse-strand seeds in
+              //  chunked mode. Guard removed — emit the raw bytes as the rest of
+              //  the merge does in non-chunked mode.
+
               memcpy(aptr,p+IPOST,ICONT);
               adest = Select[acont];
               if (bsign)
@@ -900,7 +942,7 @@ static void *new_merge_thread(void *args)
               btop += IBYTE;
               memcpy(btop,pay1,JBYTE);
               btop += JBYTE;
- 
+
               nhits += 1;
               tseed += plen;
 
@@ -981,6 +1023,11 @@ static void *new_merge_thread(void *args)
 #endif
               if (CBYTE >= 0 && p[-2] >= mlen)
                 continue;
+
+              //  Same as flip path: the byte at p+JPOST is JSIGN, the contig+strand
+              //  byte; high bit is the strand sign and is masked off downstream.
+              //  No guard needed.
+
               bsign = (p[JSIGN] & 0x80);
               if (bsign)
                 ou = cunit + adest;
@@ -2411,10 +2458,16 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
       for (i = 0; i < NTHREADS; i++)
         new_merge_thread(parm+i);
 #else
+      //  Note: previously chunked mode used a serial merge here, on the
+      //  hypothesis that the parallel merge had a race that lost ~30 % of
+      //  seeds. That diagnosis was wrong — the loss was actually the
+      //  OPT78_DROP guard mis-reading the strand-sign bit as a corrupt
+      //  contig. With that guard removed, parallel merge is bit-exact for
+      //  chunked mode too. Each worker has its own clone, its own cache
+      //  slice, and its own IOBuffer set; the parallel path is well-formed.
       for (i = 1; i < NTHREADS; i++)
         pthread_create(threads+i,NULL,new_merge_thread,parm+i);
       new_merge_thread(parm);
-
       for (i = 1; i < NTHREADS; i++)
         pthread_join(threads[i],NULL);
 #endif
@@ -2428,7 +2481,6 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
       for (i = 1; i < NTHREADS; i++)
         pthread_create(threads+i,NULL,old_merge_thread,parm+i);
       old_merge_thread(parm);
-
       for (i = 1; i < NTHREADS; i++)
         pthread_join(threads[i],NULL);
 #endif
@@ -2475,7 +2527,6 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
           for (i = 1; i < NTHREADS; i++)
             pthread_create(threads+i,NULL,new_merge_thread,parm+i);
           new_merge_thread(parm);
-
           for (i = 1; i < NTHREADS; i++)
             pthread_join(threads[i],NULL);
 #endif
@@ -2489,7 +2540,6 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
           for (i = 1; i < NTHREADS; i++)
             pthread_create(threads+i,NULL,old_merge_thread,parm+i);
           old_merge_thread(parm);
-
           for (i = 1; i < NTHREADS; i++)
             pthread_join(threads[i],NULL);
 #endif
@@ -5257,12 +5307,16 @@ int main(int argc, char *argv[])
       //    incrementally into the same temp files. buck[] accumulates
       //    across chunks (no per-chunk zero — see above).
 
-      { int    g2_nparts = P2->nthr;   //  Use P2 (from .gix stub), T2 may be NULL in chunk mode
+      { int    g2_nparts;
         int    parts_per_chunk, cfirst, clast, chunk;
         int    csize2 = P2->pbyte + 1 + P2->has_mask;
         char  *cmd;
 
         if (!P2->has_lcp) csize2 = -csize2;
+
+        g2_nparts = read_ksplit_nparts(PATH1,ROOT1);
+        if (g2_nparts < 1)
+          g2_nparts = P2->nthr;
 
         //  Free genome1's stream (we'll reopen per-chunk). In bilateral-chunk
         //  mode (Opt 8) T1 was deferred and is already NULL; only the Opt 7
@@ -5343,16 +5397,8 @@ int main(int argc, char *argv[])
                 Clean_Exit(1);
               }
 
-            //  Merge this chunk (T1/T2 freed inside).
-            //  Opt 8: force single-threaded merge in chunk mode for bit-exactness.
-            //  The chunked merge has a multi-thread race in the last chunk's tid=0
-            //  (only chunk 4 of K=4 affected, ~5K seeds out of 51M). Merge phase is
-            //  <1% of human-genome runtime so the perf hit is negligible.
-            { int saved_nthreads = NTHREADS;
-              NTHREADS = 1;
-              adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
-              NTHREADS = saved_nthreads;
-            }
+            //  Merge this chunk (T1/T2 freed inside adaptamer_merge).
+            adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
 
             //  Delete genome1's chunk files (Opt 8 bilateral chunking)
 
@@ -5482,7 +5528,7 @@ int main(int argc, char *argv[])
         printf("\n");
       }
 #endif
-  
+
     pair_sort_search(gdb1,gdb2);
 
     if (VERBOSE)
