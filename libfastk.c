@@ -1077,7 +1077,17 @@ void Free_Kmer_Stream(Kmer_Stream *_S)
   if (!S->clone)
     { free(S->neps);
       free(S->index);
-      free(S->inver);
+      //  Opt 7/8 chunked-mode workaround: free(S->inver) sporadically segfaults
+      //  in the cleanup of the last chunk on large (human-scale) inputs only.
+      //  Symptom: SIGSEGV inside libc free() for chunk 4's original T2 stream
+      //  after all useful work is done. Clones and earlier chunks free cleanly.
+      //  Doesn't reproduce on EXAMPLE at any chunk count. Most likely an OOB
+      //  write somewhere in the chunked merge that corrupts the inver mmap
+      //  chunk metadata. ASAN build in progress to identify the writer.
+      //  Until then we deliberately leak S->inver (~60MB per stream, ~480MB
+      //  total over a -C4 run). OS reclaims at _exit().
+      //  TODO: when ASAN pinpoints the writer, restore free(S->inver).
+      //  free(S->inver);
     }
   free(S->name);
   free(S->table);
