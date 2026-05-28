@@ -1077,16 +1077,18 @@ void Free_Kmer_Stream(Kmer_Stream *_S)
   if (!S->clone)
     { free(S->neps);
       free(S->index);
-      //  Opt 7/8 chunked-mode workaround: free(S->inver) sporadically segfaults
-      //  in the cleanup of the last chunk on large (human-scale) inputs only.
-      //  Symptom: SIGSEGV inside libc free() for chunk 4's original T2 stream
-      //  after all useful work is done. Clones and earlier chunks free cleanly.
-      //  Doesn't reproduce on EXAMPLE at any chunk count. Most likely an OOB
-      //  write somewhere in the chunked merge that corrupts the inver mmap
-      //  chunk metadata. ASAN build in progress to identify the writer.
-      //  Until then we deliberately leak S->inver (~60MB per stream, ~480MB
-      //  total over a -C4 run). OS reclaims at _exit().
-      //  TODO: when ASAN pinpoints the writer, restore free(S->inver).
+      //  Chunked-mode workaround: free(S->inver) sporadically segfaults in
+      //  the cleanup of the last chunk on large (human-scale) inputs.
+      //  Symptom: SIGSEGV inside libc free() for the final chunk's original
+      //  T2 stream after all useful work is done. Clones and earlier chunks
+      //  free cleanly, and the issue does not reproduce on small datasets
+      //  at any chunk count. Most likely an out-of-bounds write somewhere
+      //  in the chunked merge that corrupts the inver mmap's allocator
+      //  metadata; an ASAN-instrumented investigation is the next step.
+      //  Until that is resolved we deliberately skip freeing S->inver
+      //  (~60 MB per stream, ~480 MB total over a -C 4 run on human data).
+      //  The OS reclaims it at process exit. Re-enable once the writer is
+      //  identified and fixed.
       //  free(S->inver);
     }
   free(S->name);
@@ -1290,7 +1292,7 @@ inline void First_Kmer_Entry(Kmer_Stream *_S)
 
       lseek(S->copn,sizeof(int)+sizeof(int64),SEEK_SET);
 
-      S->has_prev = 0;   //  Opt 8/Opt 4 fix: rewind invalidates stale prev_suf for LCP recompute
+      S->has_prev = 0;   //  rewind invalidates the stale prev_suf used by on-the-fly LCP recompute
       More_Kmer_Stream(S);
       S->cidx = 0;
       S->cpre = 0;

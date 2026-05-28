@@ -421,9 +421,10 @@ part_io_error:
   exit (1);
 }
 
-//  Opt 8: NPARTS from genome1's Ksplit sidecar (same file GIXmake reads with -X).
-//  Stub-only .gix files can carry a stale nthr on genome2; chunk ranges must follow
-//  the authoritative K-mer partition count or only a prefix of partitions is merged.
+//  Read NPARTS from genome1's Ksplit sidecar (the same file GIXmake reads with -X).
+//  In chunked mode genome2's stub-only .gix can carry a stale nthr, so chunk ranges
+//  must follow the authoritative K-mer partition count from the sidecar — otherwise
+//  only a prefix of partitions is merged.
 static int read_ksplit_nparts(char *path, char *root)
 { char *sname;
   int   fd, nparts;
@@ -718,13 +719,14 @@ static void *new_merge_thread(void *args)
   vlcp[plen] = rcur = rend = cache;
   eorun = 0;
 
-  //  Opt 7/8 fix: initialize low/hgh/top so the first T1 iteration that takes
-  //  `goto pairs` (without hitting the `range:` label) sees an empty T2 range
-  //  and skips the write loop. Otherwise we'd read garbage stack memory and
-  //  emit seeds with corrupt contig bytes, blowing up later in align_contigs.
-  //  Pre-Opt 7/8 the very first T1 entry always had LCP <= 12 so range: ran
-  //  on the first iteration; chunked mode (tid != 0) jumps to mid-stream and
-  //  can hit goto pairs first.
+  //  Initialize low/hgh/top so a first T1 iteration that takes `goto pairs`
+  //  (without first reaching the `range:` label) sees an empty T2 range and
+  //  skips the write loop. Otherwise we'd read uninitialized stack memory
+  //  and emit seeds with corrupt contig bytes, blowing up later in
+  //  align_contigs. In the original code path the first T1 entry always had
+  //  LCP <= 12 so the `range:` label ran on the first iteration, but with
+  //  chunked merge a worker (tid != 0) can jump mid-stream and hit
+  //  `goto pairs` first.
   low = hgh = top = cache;
 
   qcnt = -1;
@@ -922,13 +924,12 @@ static void *new_merge_thread(void *args)
               if (p[ISIGN] & 0x80 || (CBYTE >= 0 && p[-2] >= mlen))
                 continue;
 
-              //  NOTE: the contig byte at p+IPOST has the sign bit (ISIGN, high bit)
-              //  packed in — readers always mask it off via `jcont &= mask` in
-              //  reimport_thread (see line ~2846). Earlier debug instrumentation
-              //  added an out-of-range guard that mistook the sign bit for corrupt
-              //  contig data and silently dropped ~31% of reverse-strand seeds in
-              //  chunked mode. Guard removed — emit the raw bytes as the rest of
-              //  the merge does in non-chunked mode.
+              //  NOTE: the contig byte at p+IPOST has the strand sign bit
+              //  (ISIGN, high bit) packed in; readers mask it off via
+              //  `jcont &= mask` in reimport_thread. An earlier guard added
+              //  during chunked-mode debugging mistook the sign bit for a
+              //  corrupt contig and silently dropped reverse-strand seeds.
+              //  Emit the raw bytes here, as the non-chunked path always has.
 
               memcpy(aptr,p+IPOST,ICONT);
               adest = Select[acont];
@@ -1024,9 +1025,9 @@ static void *new_merge_thread(void *args)
               if (CBYTE >= 0 && p[-2] >= mlen)
                 continue;
 
-              //  Same as flip path: the byte at p+JPOST is JSIGN, the contig+strand
-              //  byte; high bit is the strand sign and is masked off downstream.
-              //  No guard needed.
+              //  Same as the flip path above: the byte at p+JPOST is JSIGN,
+              //  the contig+strand byte; the high bit is the strand sign
+              //  and is masked off downstream. No guard needed.
 
               bsign = (p[JSIGN] & 0x80);
               if (bsign)
@@ -2372,12 +2373,12 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
     int   t;
     int64 p;
 
-    //  Opt 8 fix: parm-split previously called GoTo_Kmer_Index on the original
-    //  T1/T2 stream, leaving it stranded mid-stream. Tid=0 then reused that
-    //  same original stream and depended on First_Kmer_Entry to rewind it —
-    //  but with chunked GIX + Opt 4 LCP recompute that rewind path had stale
-    //  state across runs. Use a throwaway clone for the split scan instead so
-    //  the originals stay untouched.
+    //  The parm-split scan previously walked the original T1/T2 stream with
+    //  GoTo_Kmer_Index, leaving it stranded mid-stream. Worker tid=0 then
+    //  reused that same stream and relied on First_Kmer_Entry to rewind it.
+    //  That rewind path carries stale state when LCP is recomputed on the
+    //  fly (chunked GIX + on-disk LCP byte dropped), so we scan a throwaway
+    //  clone here instead and leave the originals untouched.
     Kmer_Stream *split_tp;
     if (T1->nels > T2->nels)
       split_tp = Clone_Kmer_Stream(T1);
@@ -2458,13 +2459,13 @@ static void adaptamer_merge(Kmer_Stream *T1, Kmer_Stream *T2,
       for (i = 0; i < NTHREADS; i++)
         new_merge_thread(parm+i);
 #else
-      //  Note: previously chunked mode used a serial merge here, on the
-      //  hypothesis that the parallel merge had a race that lost ~30 % of
-      //  seeds. That diagnosis was wrong — the loss was actually the
-      //  OPT78_DROP guard mis-reading the strand-sign bit as a corrupt
-      //  contig. With that guard removed, parallel merge is bit-exact for
-      //  chunked mode too. Each worker has its own clone, its own cache
-      //  slice, and its own IOBuffer set; the parallel path is well-formed.
+      //  Earlier we suspected a race in this parallel merge under chunked
+      //  mode (~30% of seeds appeared to be lost) and forced a serial
+      //  fallback here. The real cause was a downstream guard that misread
+      //  the strand-sign bit as a corrupt contig; with that guard removed
+      //  the parallel merge is bit-exact in chunked mode as well. Each
+      //  worker has its own stream clone, its own cache slice, and its own
+      //  IOBuffer set, so the parallel path is well-formed.
       for (i = 1; i < NTHREADS; i++)
         pthread_create(threads+i,NULL,new_merge_thread,parm+i);
       new_merge_thread(parm);
@@ -2601,7 +2602,7 @@ static void self_adaptamer_merge(Kmer_Stream *T1, Post_List *P1, int64 g1len)
     int   t;
     int64 p;
 
-    //  Opt 8 fix: scan a clone so the original T1 (used by tid=0) stays untouched
+    //  Scan a clone so the original T1 (used by worker tid=0) stays untouched.
     Kmer_Stream *split_tp = Clone_Kmer_Stream(T1);
     ent = Current_Entry(split_tp,NULL);
 #ifdef DEBUG_SPLIT
@@ -4904,8 +4905,9 @@ int main(int argc, char *argv[])
               }
           }
 
-        //  Opt 8 bilateral chunking: g2 inherits g1's partition boundaries via sidecar.
-        //  g1 was just built with -n, so its sidecar $PATH1/.$ROOT1.split exists.
+        //  Bilateral chunking: g2 inherits g1's partition boundaries via the
+        //  Ksplit sidecar. g1 was just built with -n above, so the sidecar
+        //  $PATH1/.$ROOT1.split exists and can be passed to g2's GIXmake.
         char xflag[1024];
         xflag[0] = '\0';
         if (NCHUNKS > 0)
@@ -5000,8 +5002,8 @@ int main(int argc, char *argv[])
       NEW_GIX = 1;
       if (!P1->has_lcp) csize1 = -csize1;
       if (!P2->has_lcp) csize2 = -csize2;
-      //  Opt 8: in bilateral chunk mode both genomes are built with -n
-      //  (stub-only), so defer opening T1/T2 until the chunk loop.
+      //  In chunked mode both genomes are built with -n (stub-only) above,
+      //  so defer opening T1/T2 until each chunk's GIX is rebuilt below.
       if (NCHUNKS > 0 && !SELF)
         { T1 = NULL;
           T2 = NULL;
@@ -5033,7 +5035,7 @@ int main(int argc, char *argv[])
 
   Perm1  = P1->perm;
   Perm2  = P2->perm;
-  KMER   = (T1 != NULL) ? T1->kmer : 40;   //  Opt 8: in chunk mode T1 is deferred; FastGA always uses K=40
+  KMER   = (T1 != NULL) ? T1->kmer : 40;   //  T1 is deferred in chunked mode; FastGA always uses K=40
 
   { FILE *file;
     char *fname;
@@ -5130,11 +5132,12 @@ int main(int argc, char *argv[])
   JPOST = JBYTE-JCONT;
   JSIGN = JBYTE-1;
 
-  { Kmer_Stream *Tref = (T2 != NULL) ? T2 : T1;  //  In chunk mode streams may be deferred
+  { Kmer_Stream *Tref = (T2 != NULL) ? T2 : T1;  //  In chunked mode streams may be deferred
 
-    //  Opt 8 bilateral chunking: both T1 and T2 are NULL before chunk loop.
-    //  Derive geometry from stub constants (KMER=40 ⇒ kbyte=10, ibyte=3 ⇒ hbyte=7)
-    //  plus Post_List's pbyte/has_mask/has_lcp.
+    //  In chunked mode both T1 and T2 are NULL until the chunk loop opens
+    //  them per chunk, so derive the entry geometry from stub constants
+    //  (KMER=40 ⇒ kbyte=10, ibyte=3 ⇒ hbyte=7) plus Post_List's
+    //  pbyte/has_mask/has_lcp.
     int hbyte_val, kbyte_val;
     if (Tref != NULL)
       { kbyte_val = Tref->pbyte;
@@ -5303,9 +5306,10 @@ int main(int argc, char *argv[])
 
     if (NCHUNKS > 0 && !SELF && NEW_GIX)
 
-      //  Chunk-wise merge (Opt 7/8): rebuild chunk GIX, merge each chunk
-      //    incrementally into the same temp files. buck[] accumulates
-      //    across chunks (no per-chunk zero — see above).
+      //  Chunked seed merge: rebuild one chunk of each genome's GIX at a
+      //    time and merge that chunk pair into the same temp files. The
+      //    per-thread per-contig buck[] counters accumulate across chunks
+      //    (see the one-shot zero above).
 
       { int    g2_nparts;
         int    parts_per_chunk, cfirst, clast, chunk;
@@ -5318,9 +5322,9 @@ int main(int argc, char *argv[])
         if (g2_nparts < 1)
           g2_nparts = P2->nthr;
 
-        //  Free genome1's stream (we'll reopen per-chunk). In bilateral-chunk
-        //  mode (Opt 8) T1 was deferred and is already NULL; only the Opt 7
-        //  single-sided path had a live T1 here.
+        //  Free genome1's stream; we reopen it per-chunk below. T1 is
+        //  already NULL in the bilateral-chunked path (deferred above);
+        //  the guard handles legacy code paths that opened it early.
         if (T1 != NULL)
           Free_Kmer_Stream(T1);
 
@@ -5346,7 +5350,8 @@ int main(int argc, char *argv[])
               fprintf(stderr,"\n  --- Chunk %d/%d (partitions %d-%d) ---\n",
                              chunk+1,NCHUNKS,cfirst,clast);
 
-            //  Opt 8: build genome1's chunk GIX (both genomes share g1's sidecar Ksplit)
+            //  Build genome1's chunk GIX. Both genomes share g1's Ksplit
+            //  (passed via -X) so chunk k of g1 only matches chunk k of g2.
 
             if (LOG_FILE)
               { fclose(LOG_FILE);
@@ -5400,7 +5405,7 @@ int main(int argc, char *argv[])
             //  Merge this chunk (T1/T2 freed inside adaptamer_merge).
             adaptamer_merge(T1,T2,P1,P2,gdb1->seqtot);
 
-            //  Delete genome1's chunk files (Opt 8 bilateral chunking)
+            //  Delete genome1's chunk ktab files
 
             { int p;
               char *gname = Malloc(strlen(PATH1)+strlen(ROOT1)+30,"chunk name");
