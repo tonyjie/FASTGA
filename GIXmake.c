@@ -618,12 +618,13 @@ static void *scan_thread(void *args)
   return (NULL);
 }
 
-//  Sidecar .split file format (Opt 8 bilateral chunking):
+//  Ksplit sidecar (.split) file format, used by bilateral chunked merge:
 //    int  NPARTS
 //    int  Ksplit[NPARTS+1]
-//  Written by write_ksplit_sidecar once Ksplit is finalized, read by read_ksplit_sidecar
-//  when -X <path> is given. This lets genome2 inherit genome1's partition boundaries
-//  even after the main .gix stub is overwritten by chunk builds.
+//  Written by write_ksplit_sidecar once Ksplit is finalized; read by
+//  read_ksplit_sidecar when -X <path> is given. This lets a second genome
+//  inherit the first genome's partition boundaries even after the main
+//  .gix stub is overwritten by subsequent chunk builds.
 
 static int read_ksplit_sidecar(char *path, int *nparts_out, int **ksplit_out)
 { int  fd, nparts, *ksplit;
@@ -723,9 +724,9 @@ void distribute(GDB *gdb)
 
     if (REF_KSPLIT != NULL)
       {
-        //  -X: inherit Ksplit from reference stub (Opt 8: bilateral chunking).
-        //  Both genomes must partition by the same prefix boundaries so chunk i
-        //  of g1 only has matches with chunk i of g2.
+        //  -X: inherit Ksplit from a reference sidecar (bilateral chunked
+        //  merge). Both genomes must use the same prefix-bucket boundaries
+        //  so chunk i of g1 only has matches with chunk i of g2.
         int p;
         for (i = 0; i <= NPARTS; i++)
           Ksplit[i] = REF_KSPLIT[i];
@@ -2011,7 +2012,7 @@ int main(int argc, char *argv[])
     else if (NPARTS > 64)
       NPARTS = 64;
 
-    //  -X: override NPARTS and Ksplit from sidecar (Opt 8 bilateral chunking)
+    //  -X: override NPARTS and Ksplit from a reference sidecar (bilateral chunked merge)
     if (REF_STUB != NULL)
       { if (read_ksplit_sidecar(REF_STUB,&REF_NPARTS,&REF_KSPLIT) < 0)
           exit (1);
@@ -2125,9 +2126,9 @@ int main(int argc, char *argv[])
   distribute(gdb);   //  Distribute k-mers to 1st byte partitions, encoded as compressed
                      //    relative positions of the given k-mers
 
-  //  Opt 8: write sidecar with NPARTS + Ksplit so other genomes can inherit via -X.
-  //  Only write when not in chunk mode (chunks shouldn't clobber the sidecar from the
-  //  earlier -n pass). Written once during the initial -n pass.
+  //  Write the Ksplit sidecar so a second genome can inherit it via -X.
+  //  Skipped in chunked mode so per-chunk builds don't clobber the sidecar
+  //  written during the initial stub-only (-n) pass.
   if (!CHUNKED)
     write_ksplit_sidecar(TPATH,TROOT);
 
