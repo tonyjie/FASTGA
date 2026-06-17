@@ -1,4 +1,9 @@
 # FastGA: A Fast Genome Aligner
+
+[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](https://bioconda.github.io/recipes/fastga/README.html)
+[![Anaconda-Server Badge](https://anaconda.org/bioconda/fastga/badges/version.svg)](https://anaconda.org/bioconda/fastga)
+[![Anaconda-Server Badge](https://anaconda.org/bioconda/fastga/badges/downloads.svg)](https://anaconda.org/bioconda/fastga)
+
   
 <font size ="4">**_Authors:  Gene Myers & Chenxi Zhou_**<br>
 **_First:   May 10, 2023_**<br>
