@@ -723,6 +723,7 @@ FILE **Create_GDB(GDB *gdb, char *spath, int ftype, int bps, char *tpath, int nt
                   }
                 masks[nmasks].label  = NULL;
                 masks[nmasks].score  = 0;
+                masks[nmasks].parse  = 0;
                 nmasks += 1;
               }
             break;
@@ -922,6 +923,7 @@ FILE **Create_GDB(GDB *gdb, char *spath, int ftype, int bps, char *tpath, int nt
                               masks[nmasks].orient = 0; 
                               masks[nmasks].label  = NULL; 
                               masks[nmasks].score  = 0;
+                              masks[nmasks].parse  = 0;
                               nmasks += 1;
                               mask = -1;
                             }
@@ -1000,6 +1002,7 @@ FILE **Create_GDB(GDB *gdb, char *spath, int ftype, int bps, char *tpath, int nt
                               masks[nmasks].orient = 0; 
                               masks[nmasks].label  = NULL; 
                               masks[nmasks].score  = 0;
+                              masks[nmasks].parse  = 0;
                               nmasks += 1;
                               mask = -1;
                             }
@@ -1036,6 +1039,7 @@ FILE **Create_GDB(GDB *gdb, char *spath, int ftype, int bps, char *tpath, int nt
               masks[nmasks].orient = 0; 
               masks[nmasks].label  = NULL; 
               masks[nmasks].score  = 0;
+              masks[nmasks].parse  = 0;
               nmasks += 1;
               mask = -1;
             }
