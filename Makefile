@@ -35,11 +35,11 @@ GIXshow: GIXshow.c libfastk.c libfastk.h gene_core.c gene_core.h
 GIXrm: GIXrm.c gene_core.c gene_core.h
 	$(CC) $(CFLAGS) -o GIXrm GIXrm.c gene_core.c -lm
 
-GIXmv: GIXxfer.c GDB.c GDB.h gene_core.c ONElib.c ONElib.h gene_core.h
-	$(CC) $(CFLAGS) -DMOVE -o GIXmv GIXxfer.c GDB.c ONElib.c gene_core.c -lm -lz
+GIXmv: GIXxfer.c GDB.c GDB.h ANO.c ANO.h gene_core.c ONElib.c ONElib.h gene_core.h
+	$(CC) $(CFLAGS) -DMOVE -o GIXmv GIXxfer.c GDB.c ANO.c ONElib.c gene_core.c -lm -lz
 
-GIXcp: GIXxfer.c GDB.c GDB.h ONElib.c ONElib.h gene_core.c gene_core.h
-	$(CC) $(CFLAGS) -o GIXcp GIXxfer.c GDB.c ONElib.c gene_core.c -lm -lz
+GIXcp: GIXxfer.c GDB.c GDB.h ANO.c ANO.h ONElib.c ONElib.h gene_core.c gene_core.h
+	$(CC) $(CFLAGS) -o GIXcp GIXxfer.c GDB.c ANO.c ONElib.c gene_core.c -lm -lz
 
 FastGA: FastGA.c libfastk.c libfastk.h GDB.c GDB.h RSDsort.c align.c align.h alncode.c alncode.h ONElib.c ONElib.h
 	$(CC) $(CFLAGS) -o FastGA FastGA.c RSDsort.c libfastk.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz

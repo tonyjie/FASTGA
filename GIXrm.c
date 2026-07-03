@@ -18,7 +18,7 @@
 
 #include "gene_core.h"
 
-static char *Usage = "[-vifg] <source:path>[.1gdb|.gix] ... ";
+static char *Usage = "[-vifg] <source:path>[.1gdb|.gix|.1ano] ... ";
 
 int main(int argc, char *argv[])
 { int   VERBOSE;
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
   //  Determine source and target root names, paths, and extensions
 
   { char *PATH, *ROOT, *GEXTN;
-    int   HAS_GDB, HAS_GIX;
+    int   HAS_GDB, HAS_GIX, HAS_ANO;
     struct stat status;
     char *p, *com;
     FILE *input;
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
       com = "rm";
 
     for (c = 1; c < argc; c++)
-      { HAS_GDB = HAS_GIX = 0;
+      { HAS_GDB = HAS_GIX = HAS_ANO = 0;
 
         PATH = argv[c];
         p = rindex(PATH,'/');
@@ -114,6 +114,16 @@ int main(int argc, char *argv[])
               }
           }
 
+        input = fopen(Catenate(PATH,"/",ROOT,".1ano"),"r");
+        if (input != NULL)
+          { fclose(input);
+            HAS_ANO = 1;
+          }
+        else if (strcmp(ROOT+(strlen(ROOT)-5),".1ano") == 0)
+          { HAS_ANO = 1;
+            ROOT[strlen(ROOT)-5] = '\0';
+          }
+
         input = fopen(Catenate(PATH,"/",ROOT,".gix"),"r");
         if (input != NULL)
           { fclose(input);
@@ -126,9 +136,9 @@ int main(int argc, char *argv[])
 
         command = Malloc(4*(strlen(PATH)+strlen(ROOT))+100,"Allocating command buffer");
 
-        if (HAS_GIX + HAS_GDB * GDB_TOO == 0)
+        if (HAS_GIX + HAS_GDB * GDB_TOO + HAS_ANO * GDB_TOO == 0)
           { if (GDB_TOO)
-              fprintf(stderr,"  Warning: there is no GDB or GIX with root %s/%s\n",PATH,ROOT);
+              fprintf(stderr,"  Warning: there is no GDB, GIX, or ANO with root %s/%s\n",PATH,ROOT);
             else
               fprintf(stderr,"  Warning: there is no GIX with root %s/%s\n",PATH,ROOT);
           }
@@ -181,6 +191,29 @@ int main(int argc, char *argv[])
                     fflush(stderr);
                   }
                 sprintf(command,"%s %s/%s%s %s/.%s.bps",com,PATH,ROOT,GEXTN,PATH,ROOT);
+                if (system(command) != 0) goto sys_error;
+              }
+          }
+
+        if (HAS_ANO && GDB_TOO)
+          { yes = 1;
+            if (ASK)
+              { printf("Remove %s/%s.1ano? ",PATH,ROOT);
+                fflush(stdout);
+                yes = 0;
+                while ((a = getc(stdin)) != '\n')
+                  if (a == 'y' || a == 'Y')
+                    yes = 1;
+                  else if (a == 'n' || a == 'N')
+                    yes = 0;
+                fflush(stdout);
+              }
+            if (yes)
+              { if (VERBOSE)
+                  { fprintf(stderr,"  Removing %s/%s.1ano\n",PATH,ROOT);
+                    fflush(stderr);
+                  }
+                sprintf(command,"%s %s/%s.1ano",com,PATH,ROOT);
                 if (system(command) != 0) goto sys_error;
               }
           }
