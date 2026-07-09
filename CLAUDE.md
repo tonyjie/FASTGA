@@ -180,7 +180,7 @@ The pipeline has 4 major phases inside `FastGA.c`:
 
 ## Storage Problem: Large Intermediate Files
 
-This is the primary motivation for the `optimize-memory` branch. See `docs/benchmark_storage.md` for full analysis with figures.
+This is the primary motivation for the `optimize-memory` branch. See `docs/old_archive/benchmark_storage.md` for full analysis with figures.
 
 ### The Problem
 When aligning large genomes, FastGA creates massive intermediate files that can consume tens to hundreds of GBs of disk space. Running multiple FastGA processes on the same node compounds this, easily hitting scratch limits and causing crashes.
@@ -222,15 +222,22 @@ The GIX files (~62.7 GB for human genomes) are only read during the seed merge p
 
 - **Opt 5 (Ktab Compression)**: Attempted zstd block compression of ktab files. Only ~14% compression (position payload is incompressible). **FAILED** — decompression round-trip bug not resolved. All code reverted.
 
-Combined (Opt 1+3): peak disk ~66 GB (was 71 GB), sort+align disk ~7 GB (was ~64 GB). See `docs/storage_optimization/` for full results.
+Combined (Opt 1+3): peak disk ~66 GB (was 71 GB), sort+align disk ~7 GB (was ~64 GB). See `docs/old_archive/storage_optimization/` for full results.
 
 ### Documentation
-- `docs/benchmark_performance.md` — Thread scaling and per-phase runtime breakdown
-- `docs/benchmark_storage.md` — File sizes, storage timeline, per-phase file inventory
-- `docs/benchmark_instructions.md` — How to reproduce all benchmarks and evaluate optimizations
-- `docs/storage_optimization/` — Optimization efforts, plans, and results
+
+**Current (against new upstream FastGA, `main` @ upstream `ddeea32` + .gitignore):**
+- `docs/benchmark_thread_scaling_upstream.md` — Thread scaling study of the new upstream build (EXAMPLE dataset)
+- `docs/benchmark_thread_scaling_upstream/` — raw data (`results.tsv`), plot + driver scripts
+
+**Archived (based on the OLD upstream; the storage-optimization effort — Opt1/3/5):**
+- `docs/old_archive/benchmark_performance.md` — Thread scaling and per-phase runtime breakdown (old build)
+- `docs/old_archive/benchmark_storage.md` — File sizes, storage timeline, per-phase file inventory
+- `docs/old_archive/benchmark_instructions.md` — How to reproduce all benchmarks and evaluate optimizations
+- `docs/old_archive/fastga_guide.md` — Educational guide (describes original baseline code)
+- `docs/old_archive/storage_optimization/` — Optimization efforts, plans, and results
   - `README.md` — Overview index with status table for all optimizations
   - `optimization_plan.md` — Full plan with 6 identified opportunities
   - `optimization_template.md` — Standard template for each new optimization
   - `opt1_early_gix_deletion.md` — Optimization 1: results and verification
-- `benchmarks/` — Scripts for profiling and evaluation
+- `benchmarks/` — Scripts for profiling and evaluation (old storage-audit tooling)
