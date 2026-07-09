@@ -1,0 +1,41 @@
+# Locally-created documentation / benchmarks / notes (not part of upstream)
+/docs/
+/benchmarks/
+/tasks/
+
+# Compiled binaries (Makefile build outputs)
+/FAtoGDB
+/GDBtoFA
+/GDBstat
+/GDBshow
+/GIXmake
+/GIXshow
+/GIXrm
+/GIXmv
+/GIXcp
+/FastGA
+/ALNshow
+/ALNtoPAF
+/ALNtoPSL
+/ALNreset
+/ALNplot
+/ALNchain
+/PAFtoALN
+/PAFtoPSL
+/ONEview
+/FastKS
+/ONEalnTEST
+/ANOstat
+/ANOshow
+/ANOtoBED
+/BEDtoANO
+*.[oa]
+*~
+
+# Generated genome database / index artifacts (e.g. under EXAMPLE/)
+*.1gdb
+*.gix
+.*.bps
+.*.idx
+.*.ktab.*
+.*.post.*
