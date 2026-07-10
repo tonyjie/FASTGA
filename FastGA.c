@@ -5145,7 +5145,14 @@ int main(int argc, char *argv[])
       }
     else
       { hbyte_val = 7;   //  kbyte(10) - ibyte(3)
-        kbyte_val = hbyte_val + P2->pbyte + (P2->has_lcp ? 1 : 0) + (P2->has_mask ? 1 : 0);
+        //  The in-memory k-mer entry ALWAYS carries the LCP byte: when the
+        //  optimized on-disk format omits it (has_lcp==0) the stream rebuilds
+        //  it on the fly, so T2->pbyte is +1 larger than the on-disk record.
+        //  KBYTE sizes the merge `cache` (stride) and MUST match that in-memory
+        //  size — matching csize2 = P2->pbyte + 1 + has_mask at stream open.
+        //  Using (has_lcp?1:0) here undersized cache by 1 byte/entry (11 vs 12),
+        //  overflowing it in chunked mode (heap corruption / lost seeds).
+        kbyte_val = hbyte_val + P2->pbyte + 1 + (P2->has_mask ? 1 : 0);
       }
     KBYTE = kbyte_val;
     if (P2->has_mask)
