@@ -6,8 +6,15 @@ pipeline runs as **four distinct stages that scale very differently**, so the ov
 is a blend of a serial floor and several partially-parallel stages.
 
 Companion to [`storage_profiling.md`](storage_profiling.md). Machine: AMD EPYC 9124,
-2×16 cores = 64 logical threads. Threads T = 1…32 (FastGA hard-caps at 32), median of 3 reps.
+2×16 cores = 64 logical threads. Threads T = 1…32, median of 3 reps.
 All runs produce **323,569 non-redundant alignments** — correctness is invariant to T.
+
+> **32-thread hard cap.** `-T` above 32 is rejected: `GIXmake` exits with
+> `# of threads can be at most 32, more doesn't help.` (hard-coded at `GIXmake.c:1819`,
+> `if (NTHREADS > 32)`), and since `FastGA` builds the GIX by shelling out to `GIXmake`,
+> `FastGA -T64` aborts with "Call to GIXmake failed". It is a deliberate performance cap, not
+> a crash — the per-stage data below corroborates the "more doesn't help": GIX build already
+> *regresses* past T=16, and every stage is far from linear by T=32.
 
 ## The four stages
 
