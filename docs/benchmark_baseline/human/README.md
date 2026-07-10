@@ -1,14 +1,15 @@
 # Human-genome Profiling — upstream FastGA (T=32)
 
 Profiling of **stock upstream FastGA** on the full human pair **GRCh38 × CHM13**
-(~3.1 Gbp each), at T=32. Companion to the EXAMPLE studies one level up
-([`../performance_profiling.md`](../performance_profiling.md),
-[`../storage_profiling.md`](../storage_profiling.md)).
+(~3.1 Gbp each), at T=32. Part of the baseline profiling — the cross-dataset overview is
+one level up ([`../performance_profiling.md`](../performance_profiling.md),
+[`../storage_profiling.md`](../storage_profiling.md)); the EXAMPLE-dataset detail is in
+[`../example/`](../example/).
 
 | Study | Doc | Result |
 |---|---|---|
-| **Performance** | [`performance.md`](performance.md) | per-stage runtime breakdown + CPU% (end-to-end ~604 s, peak RSS 19 GB) |
-| **Storage** | [`storage.md`](storage.md) | footprint over time (peak **72.7 GB**), by phase |
+| **Performance** | [`performance_profiling.md`](performance_profiling.md) | per-stage runtime breakdown + CPU% (end-to-end ~604 s, peak RSS 19 GB) |
+| **Storage** | [`storage_profiling.md`](storage_profiling.md) | footprint over time (peak **72.7 GB**), by phase |
 
 Both reproduce Ashir Rao's report numbers (~594 s / ~71 GB).
 

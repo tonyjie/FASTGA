@@ -1,38 +1,29 @@
 # Baseline Profiling — upstream FastGA
 
-Profiling of **stock upstream FastGA** (no `optimize-memory` / `agentic-steps` changes) on
-the repo EXAMPLE dataset. These are the reference numbers every optimization is compared
-against.
+Profiling of **stock upstream FastGA** (no `optimize-memory` / `agentic-steps` changes) —
+the reference numbers every optimization is compared against. Build under test:
+`main` @ `10ebff7` = upstream `ddeea32` + local `.gitignore`.
 
-> **Human-genome profiling** (GRCh38 × CHM13, T=32) lives in [`human/`](human/) — per-stage
-> runtime + CPU% and the storage footprint over time on the full ~3.1 Gbp pair.
+## Layout
 
-Build under test: `main` @ `10ebff7` = upstream `ddeea32` + local `.gitignore`
-(freshly `make clean && make`).
+Two cross-dataset **overview** docs at this level, and one subdirectory per dataset with the
+detailed studies, data, and scripts:
 
-## Contents
+| | Overview (both datasets) | EXAMPLE detail | Human detail |
+|---|---|---|---|
+| **Performance** | [`performance_profiling.md`](performance_profiling.md) | [`example/performance_profiling.md`](example/performance_profiling.md) | [`human/performance_profiling.md`](human/performance_profiling.md) |
+| **Storage** | [`storage_profiling.md`](storage_profiling.md) | [`example/storage_profiling.md`](example/storage_profiling.md) | [`human/storage_profiling.md`](human/storage_profiling.md) |
 
-| Study | Doc | What it measures |
-|---|---|---|
-| **Performance profiling** | [`performance_profiling.md`](performance_profiling.md) | Overall thread scaling **plus a per-stage breakdown** (GDB / GIX / seed-merge / sort+align) — each stage scales differently — on EXAMPLE, T=1…32 |
-| **Storage profiling** | [`storage_profiling.md`](storage_profiling.md) | Peak scratch disk (persistent GIX/GDB + temp) and thread-independence |
+- [`example/`](example/) — HAP1×HAP2 (~86 Mbp). Full **T=1…32 sweep**: overall + per-stage
+  thread scaling, storage timeline by phase + peak-vs-threads. Self-contained
+  (`example/performance_data/`, `example/storage_data/` — scripts + committed data).
+- [`human/`](human/) — GRCh38×CHM13 (~3.1 Gbp), **T=32**: per-stage runtime + CPU%, storage
+  footprint over time. See [`human/README.md`](human/README.md) for its setup (FAtoGDB
+  workaround, temp-measurement method).
 
-Everything needed to reproduce lives in this directory (self-contained):
-- `performance_data/` — `run_performance.sh` (driver; `-L` per-stage logs), `results.tsv` + `logs/` (data), `analyze.py` (→ `overall_scaling.png`, `stage_profile.png`).
-- `storage_data/` — `run_storage_audit.sh` (driver), `monitor_storage.sh` (polls work+tmp du), `audit/` (data), `plot.py` (→ `storage_profiling.png`).
+## Reproduce
 
-## Reproduce (both studies)
-
-The baseline is **stock upstream** FastGA — NOT `optimize-memory` / `agent-optimization`
-(whose `make` bakes in the optimizations). Build `main` (= upstream `ddeea32` + `.gitignore`)
-in a throwaway worktree, then point the drivers at it via `FASTGA=…`:
-
-```bash
-git worktree add /tmp/fastga-baseline main && make -C /tmp/fastga-baseline
-FASTGA=/tmp/fastga-baseline/FastGA bash performance_data/run_performance.sh
-FASTGA=/tmp/fastga-baseline/FastGA bash storage_data/run_storage_audit.sh
-python3 performance_data/analyze.py && python3 storage_data/plot.py
-git worktree remove /tmp/fastga-baseline
-```
-
-See each study's doc for the full step-by-step.
+Each dataset's doc has a copy-paste **Reproduce** section. In all cases the baseline binary is
+**stock upstream** — NOT `optimize-memory` / `agent-optimization` (whose `make` bakes in the
+optimizations) — so build `main` in a throwaway worktree and point the drivers at it via
+`FASTGA=…` (the human runs additionally need a working `FAtoGDB`; see `human/README.md`).
