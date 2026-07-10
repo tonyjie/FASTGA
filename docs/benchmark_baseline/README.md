@@ -4,6 +4,9 @@ Profiling of **stock upstream FastGA** (no `optimize-memory` / `agentic-steps` c
 the repo EXAMPLE dataset. These are the reference numbers every optimization is compared
 against.
 
+> **Human-genome profiling** (GRCh38 × CHM13, T=32) lives in [`human/`](human/) — per-stage
+> runtime + CPU% and the storage footprint over time on the full ~3.1 Gbp pair.
+
 Build under test: `main` @ `10ebff7` = upstream `ddeea32` + local `.gitignore`
 (freshly `make clean && make`).
 
