@@ -16,7 +16,7 @@ Build under test: `main` @ `10ebff7` = upstream `ddeea32` + local `.gitignore`
 
 Everything needed to reproduce lives in this directory (self-contained):
 - `performance_data/` — `run_performance.sh` (driver; `-L` per-stage logs), `results.tsv` + `logs/` (data), `analyze.py` (→ `overall_scaling.png`, `stage_breakdown.png`, `stage_scaling.png`).
-- `storage_data/` — `run_storage_audit.sh` (driver), `monitor_tmpdir.sh` (du poller), `audit/` (data), `plot.py` (→ `storage_profiling.png`).
+- `storage_data/` — `run_storage_audit.sh` (driver), `monitor_storage.sh` (polls work+tmp du), `audit/` (data), `plot.py` (→ `storage_profiling.png`).
 
 ## Reproduce (both studies)
 

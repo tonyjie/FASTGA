@@ -20,22 +20,27 @@ timeline in wall-clock; they do not change the peak (Panel B).
 
 ## Where the storage goes (Panel A, T=8)
 
-The temp-dir timeline shows the pipeline shape:
-- two small bumps (~60 MB) — GIX build for HAP1, then HAP2;
-- a ramp to the **seed-merge peak (~438 MB)** as seed-pair temp files accumulate while both
-  whole GIXs sit on disk;
-- a stepped decline through **sort + chain + align** as temp files are consumed.
+The stacked timeline (persistent orange + temp blue = total) traces the pipeline by phase
+(regions labelled from the same run's `-L` log):
+- **GIX build (HAP1, then HAP2)** — the **persistent** block ramps up to ~1.9 GB as the two
+  GIX indices are written; temp is minimal here (GIXmake sort scratch).
+- **Seed merge** — **temp** seed-pair files accumulate *on top of* both whole GIXs, reaching
+  the **peak of ~2344 MB** (1905 persistent + 438 temp).
+- **Sort + chain + align** — temp is consumed and steps back down.
 
-In stock upstream the GIX is **not** freed after the seed merge — it stays on disk (the ~1.9 GB
-persistent block) through the long sort+align tail, even though that phase never re-reads it.
-(That plateau is exactly what the `optimize-memory` Opt1 "early GIX deletion" targets.)
+In stock upstream the GIX is **not** freed after the seed merge — the ~1.9 GB persistent block
+stays on disk through the long sort+align tail, even though that phase never re-reads it. (That
+plateau is exactly what the `optimize-memory` Opt1 "early GIX deletion" targets.)
 
 ## Method
 
-FastGA run with `-k` (keep GIX) and `-P <dedicated tmpdir>`, while a background monitor polls
-`du -sb` on the tmpdir every 50 ms — this captures the `open()`-then-`unlink()`ed temp files
-that are invisible to `ls`. Persistent files measured with `du` after each run. Threads swept
-T = 1…32. All scripts + data live under [`storage_data/`](storage_data/).
+FastGA run with `-k` (keep GIX) and `-P <tmpdir>`, while a background monitor polls `du -sb` on
+**both** the workdir (persistent GDB/GIX) and the tmpdir (temp) every 50 ms — capturing the
+combined footprint over time. The temp files are `open()`-then-`unlink()`ed, so they are
+invisible to `ls`; `du` still counts their blocks **only on a filesystem that keeps a directory
+entry for deleted-but-open files** — NFS does (silly-rename `.nfsXXXX`), local ext4/xfs and
+tmpfs do **not**. The audit therefore runs its scratch on the repo's NFS mount by default.
+Threads swept T = 1…32. All scripts + data live under [`storage_data/`](storage_data/).
 
 ## Reproduce
 
@@ -58,8 +63,10 @@ python3 docs/benchmark_baseline/storage_data/plot.py
 git worktree remove /tmp/fastga-baseline
 ```
 
-`storage_data/`: `run_storage_audit.sh` (driver), `monitor_tmpdir.sh` (du poller),
-`audit/` (committed `summary.csv` + per-thread monitor TSVs), `plot.py` (→ `storage_profiling.png`).
+`storage_data/`: `run_storage_audit.sh` (driver), `monitor_storage.sh` (polls work+tmp `du`),
+`audit/` (committed `summary.csv`, per-thread `T*_timeline.tsv` and `T*.Llog` phase logs),
+`plot.py` (→ `storage_profiling.png`). Scratch defaults to the repo's NFS mount; override with
+`BENCH_SCRATCH=<nfs-dir>` (must not be local ext4/xfs or tmpfs — see Method).
 
 > Old upstream (`5671357`) was verified byte-identical to `ddeea32` on this profile (the 11
 > intervening commits touch only ANO/mask and read paths, not the write path), so these numbers

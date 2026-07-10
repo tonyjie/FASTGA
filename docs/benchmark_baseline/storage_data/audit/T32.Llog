@@ -1,0 +1,60 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/storage_data/audit/T32.Llog ./HAP1.fasta.gz
+
+  Total Resources:  0.402u  0.056s  0.488w  94.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/storage_data/audit/T32.Llog -T32 -P/home/jl4257/.claude/jobs/229d7158/tmp/bench_scratch/tmp ./HAP1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.771u  0.299s  2.613w  79.2%
+
+  Sorting & output of each part
+
+  Sampled:      64661214 ( 75.0%) kmers/positions
+
+  Resources for phase:  9.032u  1.483s  3.704w  283.9%
+
+  Total Resources:  10.803u  1.782s  6.317w  199.2%  0MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/storage_data/audit/T32.Llog ./HAP2.fasta.gz
+
+  Total Resources:  0.445u  0.112s  0.968w  57.5%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/storage_data/audit/T32.Llog -T32 -P/home/jl4257/.claude/jobs/229d7158/tmp/bench_scratch/tmp ./HAP2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.716u  0.216s  1.475w  131.0%
+
+  Sorting & output of each part
+
+  Sampled:      65045862 ( 75.0%) kmers/positions
+
+  Resources for phase:  8.871u  1.441s  3.267w  315.6%
+
+  Total Resources:  10.587u  1.658s  4.743w  258.1%  0MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA-baseline/FastGA -v -k -T32 -P/home/jl4257/.claude/jobs/229d7158/tmp/bench_scratch/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/storage_data/audit/T32.Llog HAP1.fasta.gz HAP2.fasta.gz
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 51082720, ave. len = 28.5, seeds per genome position = 0.6
+
+  Resources for phase:  4.392u  32.735s  7.431w  499.6%
+
+  Seed sort and alignment search, 6 parts
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:31.552u  2.445s  7.290w  1289.3%
+
+  Converting aln's to PAF-format
+
+  Resources for phase:  0.000u  0.023s  0.686w  3.5%
+
+  Total Resources:  1:35.944u  35.204s  15.408w  851.1%  0MB
