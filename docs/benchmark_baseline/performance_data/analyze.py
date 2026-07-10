@@ -77,17 +77,18 @@ with open(os.path.join(HERE, "results.tsv")) as f:
 wall = {t: st.median(tt[t]) for t in sorted(tt)}
 speed = {t: wall[T[0]] / wall[t] for t in T}
 
-# ---- tables ----
-print("### Per-stage wall (s), median")
-print("| T | " + " | ".join(STAGES) + " | sum |")
-print("|--:|" + "--:|" * (len(STAGES) + 1))
-for t in T:
-    print(f"| {t} | " + " | ".join(f"{stage[s][t]:.1f}" for s in STAGES) + f" | {tot_stage[t]:.1f} |")
-print("\n### Per-stage speedup vs T=1")
-print("| T | " + " | ".join(STAGES) + " |")
-print("|--:|" + "--:|" * len(STAGES))
-for t in T:
-    print(f"| {t} | " + " | ".join(f"{stage[s][T[0]]/stage[s][t]:.2f}x" if stage[s][t] else "—" for s in STAGES) + " |")
+# ---- merged table: per-stage wall (all T) + speedup + share ----
+t0, tN = T[0], T[-1]
+print("### Per-stage runtime (s), speedup, and share of total (median)")
+print("| Stage | " + " | ".join(f"T={t}" for t in T) + f" | speedup@{tN} | share T={t0}→{tN} |")
+print("|---|" + "--:|" * len(T) + "--:|--:|")
+def sh(s, t): return stage[s][t] / tot_stage[t] * 100
+for s in STAGES:
+    walls = " | ".join(f"{stage[s][t]:.1f}" for t in T)
+    sp = f"{stage[s][t0]/stage[s][tN]:.2f}x" if stage[s][tN] else "—"
+    print(f"| {s} | {walls} | {sp} | {sh(s,t0):.0f}% → {sh(s,tN):.0f}% |")
+print(f"| **Total (s)** | " + " | ".join(f"{tot_stage[t]:.1f}" for t in T) +
+      f" | {tot_stage[t0]/tot_stage[tN]:.2f}x | 100% |")
 
 C = {"GDB": "#9e9e9e", "GIX": "#ff9800", "Seed merge": "#1976d2", "Sort+align": "#2e7d32"}
 

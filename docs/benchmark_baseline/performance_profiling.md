@@ -34,39 +34,25 @@ All runs produce **323,569 non-redundant alignments** — correctness is invaria
 Sub-linear, Amdahl-bounded: 7.83× at T=32 (24% efficient). The next two figures explain
 *why* — it is a composite of stages with very different scaling.
 
-## Per-stage time breakdown
+## Per-stage breakdown & scaling
 
 ![stage breakdown](stage_breakdown.png)
 
-Median wall (s) per stage:
+One table per stage — wall time at each T, the T=1→T=32 speedup, and each stage's **share of
+the total** at the extremes (median of reps):
 
-| T | GDB | GIX | Seed merge | Sort+align | sum |
-|--:|--:|--:|--:|--:|--:|
-| 1  | 0.9 | 15.8 | 28.9 | 84.5 | 130.1 |
-| 2  | 0.9 | 8.6  | 15.6 | 44.5 | 69.6  |
-| 4  | 0.9 | 5.1  | 10.4 | 29.1 | 45.5  |
-| 8  | 0.9 | 3.2  | 7.6  | 16.7 | 28.4  |
-| 16 | 0.9 | 2.9  | 6.3  | 9.9  | 20.0  |
-| 32 | 0.9 | 3.4  | 4.6  | 7.3  | 16.2  |
+| Stage | T=1 | T=2 | T=4 | T=8 | T=16 | T=32 | speedup@32 | share T=1→32 |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| GDB | 0.9 | 0.9 | 0.9 | 0.9 | 0.9 | 0.9 | 1.00× | 1% → 6% |
+| GIX | 15.8 | 8.6 | 5.1 | 3.2 | 2.9 | 3.4 | 4.70× | 12% → 21% |
+| Seed merge | 28.9 | 15.6 | 10.4 | 7.6 | 6.3 | 4.6 | 6.29× | 22% → 28% |
+| Sort+align | 84.5 | 44.5 | 29.1 | 16.7 | 9.9 | 7.3 | **11.59×** | 65% → 45% |
+| **Total (s)** | 130.1 | 69.6 | 45.5 | 28.4 | 20.0 | 16.2 | — | 100% |
 
-**Sort+align dominates** — 84.5 s of 130 s (65%) at T=1 — and it is what shrinks most. As the
-parallel stages compress, the fixed serial **GDB** floor (~0.9 s) grows in *relative* weight
-(0.7% at T=1 → 5.6% at T=32).
-
-## Per-stage thread scaling
+**Sort+align dominates** — 65% of the runtime at T=1 — and shrinks most (11.6× at T=32). As the
+parallel stages compress, the fixed serial **GDB** floor (~0.9 s) grows from 1% to 6% of total.
 
 ![stage scaling](stage_scaling.png)
-
-Speedup vs T=1 per stage:
-
-| T | GDB | GIX | Seed merge | Sort+align |
-|--:|--:|--:|--:|--:|
-| 1  | 1.00x | 1.00x | 1.00x | 1.00x |
-| 2  | 1.00x | 1.84x | 1.86x | 1.90x |
-| 4  | 1.00x | 3.12x | 2.77x | 2.90x |
-| 8  | 1.00x | 4.93x | 3.82x | 5.05x |
-| 16 | 1.00x | 5.40x | 4.60x | 8.54x |
-| 32 | 1.00x | 4.70x | 6.29x | **11.59x** |
 
 Key observations:
 - **GDB is a serial floor** — `FAtoGDB` is single-threaded, flat at 1.00× (0.9 s regardless of T).
