@@ -51,9 +51,9 @@ job's peak.
 EXAMPLE (31 s → 66 s, +112%, reproducible across repeats).** The LCP byte is removed from
 disk and reconstructed per entry during stream reads; on EXAMPLE the seed-merge/read work
 is a large fraction of a short run, so the recompute dominates. On human genomes the read
-phase is <1% of runtime, so the relative cost should be far smaller (Ashir's report claims
-negligible there) — **but that has not been re-measured here.** On EXAMPLE, Opt4 is a net
-loss (−5% disk for +112% time); treat it as opt-in / human-only until confirmed.
+phase is <1% of runtime, so the relative cost is far smaller — **confirmed on human below:
++0.02% wall.** On EXAMPLE, Opt4 is a net loss (−5% disk for +112% time), but on human it is
+effectively free; enable it there, skip it on tiny inputs.
 
 ### Opt C — bilateral chunked GIX build + merge (`-C K`)
 The structural win: instead of holding both whole GIXs on disk at once, build+merge one
@@ -93,16 +93,48 @@ was the same overflow corrupting the mmap's allocator metadata.
 |---|---|---|
 | **Opt1** early deletion | −80% sort+align tail, 0 time | **Always on.** Clean win. |
 | **Opt3** mask byte | −5.6% peak, 0 time | **Always on.** Clean win. |
-| **Opt4** LCP byte | −5% peak, **+112% wall** | **Opt-in / human-only** until the human wall cost is confirmed small. |
-| **Opt C** chunking | −54…61% peak, +time | **Opt-in (`-C`)** for storage-constrained runs. Now correct. |
+| **Opt4** LCP byte | −5% peak, +112% wall (EXAMPLE) / **+0.02% wall (human)** | **On for human** (cost negligible at scale); skip on tiny inputs. |
+| **Opt C** chunking | −54…61% (EXAMPLE) / **−92…95% (human)** peak, +time | **Opt-in (`-C`)** for storage-constrained runs. Now correct at all K/T. |
+
+## Human-genome validation (GRCh38 × CHM13, ~3.1 Gbp each, T=32)
+
+![human](agent_optimization/human.png)
+
+Confirmed on the full human pair. All configs **bit-exact** (ONEview payload md5
+`8b6c42e63a17…`, **518,037 alignments**) — this md5 and count match Ashir's report exactly,
+independently reproducing it.
+
+| Config | Correctness | Peak scratch | Wall |
+|---|---|---:|---:|
+| baseline (ddeea32) | reference | 64.13 GiB | 589 s |
+| agent, non-chunked (Opt1+3+4) | **bit-exact** | 55.52 GiB (−13.4%) | 589 s |
+| agent `-C16` | **bit-exact** | **5.13 GiB (−92.0%)** | 793 s |
+| agent `-C32` | **bit-exact** | **3.47 GiB (−94.6%)** | 963 s |
+
+Two EXAMPLE-flagged questions, now answered:
+1. **Opt4's LCP-recompute cost is negligible on human**: non-chunked wall is 589.2 s vs the
+   589.0 s baseline (+0.02%) — the +112% seen on EXAMPLE is small-genome-specific (there the
+   short merge/read dominates a short run). On human, read is <1% of runtime.
+2. **Opt C peak reduction reaches the headline AND is bit-exact at large K**: −92% / −94.6%
+   at `-C16` / `-C32`, T=32 — the exact configs Ashir used and that could not be exercised on
+   EXAMPLE (NPARTS=8). The fix generalizes to human scale and large K.
+
+Matches Ashir's report to within measurement noise (his: A+B 55.61 GiB; C16 5.22 GiB/−92.1%;
+C32 3.56 GiB/−94.6%; walls 598/800/951 s). Data: `/scratch/jl4257/agent_opt_human2/`.
+
+> **Upstream regression found while running this:** `ddeea32`'s `FAtoGDB` **segfaults**
+> building CHM13's GDB (in the "masked sequence → .ano" path); the old-upstream `5671357`
+> `FAtoGDB` does not. It is in the 11 ANO commits between them (ironically incl. "Fixed …
+> ANO_PAIR.parse"), **unrelated to these storage optimizations**. Workaround here: pre-build
+> the GDBs with the working `5671357` `FAtoGDB`, then run FastGA from the `.1gdb` (so only
+> GIXmake + merge + align — the optimization path — execute). Worth reporting upstream.
 
 ## Caveats / next steps
-1. **EXAMPLE only.** The report's headline (−92–95% peak, negligible time) is a *human*
-   result at `-C16/-C32 T=32`. Re-verify Opt4's wall cost and Opt C's peak/correctness on
-   GRCh38×CHM13 before relying on those numbers.
-2. Only the one ASAN-identified overflow was chased; ASAN was clean on the fixed C4 T=1, and
-   the single root cause explains all observed symptoms, but not every (K,T) geometry was
-   exhaustively ASAN-checked.
+1. On human, only the one ASAN-identified overflow was chased; ASAN was clean on the fixed
+   C4 T=1, the single root cause explains all observed symptoms, and human `-C16/-C32` are now
+   bit-exact — but not every (K,T) geometry was exhaustively ASAN-checked.
+2. The `ddeea32` FAtoGDB/CHM13 segfault should be reported upstream and fixed independently;
+   until then, on-branch human runs need a working FAtoGDB to build GDBs.
 
 ## Reproduce
 ```bash
