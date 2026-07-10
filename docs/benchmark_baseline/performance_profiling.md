@@ -38,12 +38,12 @@ All runs produce **323,569 non-redundant alignments** — correctness is invaria
 | 16 | 20.3  | 6.43x | 40%  | 662 | 682 |
 | 32 | 16.7  | 7.83x | 24%  | 945 | 740 |
 
-Sub-linear, Amdahl-bounded: 7.83× at T=32 (24% efficient). The next two figures explain
-*why* — it is a composite of stages with very different scaling.
+Sub-linear, Amdahl-bounded: 7.83× at T=32 (24% efficient). The per-stage breakdown below explains *why* — it is a composite of stages with
+very different scaling.
 
 ## Per-stage breakdown & scaling
 
-![stage breakdown](stage_breakdown.png)
+![per-stage breakdown & scaling](stage_profile.png)
 
 One table per stage — wall time at each T, the T=1→T=32 speedup, and each stage's **share of
 the total** at the extremes (median of reps):
@@ -58,8 +58,6 @@ the total** at the extremes (median of reps):
 
 **Sort+align dominates** — 65% of the runtime at T=1 — and shrinks most (11.6× at T=32). As the
 parallel stages compress, the fixed serial **GDB** floor (~0.9 s) grows from 1% to 6% of total.
-
-![stage scaling](stage_scaling.png)
 
 Key observations:
 - **GDB is a serial floor** — `FAtoGDB` is single-threaded, flat at 1.00× (0.9 s regardless of T).
@@ -89,7 +87,7 @@ make -C /tmp/fastga-baseline
 FASTGA=/tmp/fastga-baseline/FastGA \
   bash docs/benchmark_baseline/performance_data/run_performance.sh
 
-# 3. Parse -L logs into per-stage tables + the three figures
+# 3. Parse -L logs into per-stage tables + the two figures
 python3 docs/benchmark_baseline/performance_data/analyze.py
 
 # cleanup
@@ -98,4 +96,4 @@ git worktree remove /tmp/fastga-baseline
 
 `performance_data/`: `run_performance.sh` (driver; `-L` per-stage logs), `results.tsv`
 (end-to-end metrics), `logs/T*_rep*.Llog` (per-run stage timing), `analyze.py`
-(→ `overall_scaling.png`, `stage_breakdown.png`, `stage_scaling.png`).
+(→ `overall_scaling.png`, `stage_profile.png`).

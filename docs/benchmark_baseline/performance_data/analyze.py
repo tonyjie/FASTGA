@@ -2,11 +2,10 @@
 """Performance profiling for current upstream FastGA (EXAMPLE dataset).
 
 Reads results.tsv (end-to-end metrics) + logs/T{NN}_rep{R}.Llog (FastGA -L
-per-stage resource logs, this dir), prints tables, and writes three figures to
+per-stage resource logs, this dir), prints tables, and writes two figures to
 the parent dir:
   overall_scaling.png   total wall + speedup vs threads
-  stage_breakdown.png   per-stage wall time, stacked, vs threads
-  stage_scaling.png     per-stage speedup vs threads (each stage scales differently)
+  stage_profile.png     per-stage time breakdown (stacked) + per-stage speedup, side by side
 
 Stages: GDB (FAtoGDB x2, serial), GIX (GIXmake x2), Seed merge, Sort+align (+PAF).
 """
@@ -107,31 +106,29 @@ a2.grid(True, which="both", alpha=0.25); a2.legend(frameon=False)
 fig.suptitle("FastGA performance — overall (EXAMPLE HAP1×HAP2)", fontweight="bold")
 fig.tight_layout(rect=[0, 0, 1, 0.94]); fig.savefig(os.path.join(PARENT, "overall_scaling.png"), dpi=140)
 
-# ---- Fig 2: stage breakdown (stacked) ----
-fig, ax = plt.subplots(figsize=(9, 5))
+# ---- Fig 2: per-stage breakdown + scaling, side by side (one row) ----
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(12, 4.6))
+# left: stacked time breakdown
 x = np.arange(len(T)); bottom = np.zeros(len(T))
 for s in STAGES:
     vals = np.array([stage[s][t] for t in T])
-    ax.bar(x, vals, bottom=bottom, color=C[s], label=s, width=0.6)
+    axL.bar(x, vals, bottom=bottom, color=C[s], label=s, width=0.6)
     bottom += vals
 for xi, t in zip(x, T):
-    ax.text(xi, tot_stage[t] + tot_stage[T[0]] * 0.01, f"{tot_stage[t]:.0f}s", ha="center", fontsize=8.5, fontweight="bold")
-ax.set_xticks(x); ax.set_xticklabels([f"T{t}" for t in T])
-ax.set_xlabel("threads (-T)"); ax.set_ylabel("wall time (s)")
-ax.set_title("Per-stage time breakdown (EXAMPLE, median of reps)")
-ax.legend(); ax.grid(alpha=0.3, axis="y")
-fig.tight_layout(); fig.savefig(os.path.join(PARENT, "stage_breakdown.png"), dpi=140)
-
-# ---- Fig 3: per-stage scaling ----
-fig, ax = plt.subplots(figsize=(9, 5))
+    axL.text(xi, tot_stage[t] + tot_stage[T[0]] * 0.01, f"{tot_stage[t]:.0f}s", ha="center", fontsize=8, fontweight="bold")
+axL.set_xticks(x); axL.set_xticklabels([f"T{t}" for t in T])
+axL.set_xlabel("threads (-T)"); axL.set_ylabel("wall time (s)")
+axL.set_title("Per-stage time breakdown", fontsize=11)
+axL.legend(fontsize=8.5); axL.grid(alpha=0.3, axis="y")
+# right: per-stage speedup
 for s in STAGES:
     sp = [stage[s][T[0]] / stage[s][t] if stage[s][t] else np.nan for t in T]
-    ax.plot(T, sp, "o-", color=C[s], lw=2, label=s)
-ax.plot(T, T, ":", color="#cccccc", lw=1.6, label="ideal linear")
-ax.set_xscale("log", base=2); ax.set_yscale("log", base=2); ax.set_xticks(T); ax.set_xticklabels(T)
-ax.set_yticks(T); ax.set_yticklabels(T)
-ax.set_xlabel("threads (-T)"); ax.set_ylabel("speedup vs T1")
-ax.set_title("Per-stage thread scaling — each stage scales differently")
-ax.legend(); ax.grid(True, which="both", alpha=0.25)
-fig.tight_layout(); fig.savefig(os.path.join(PARENT, "stage_scaling.png"), dpi=140)
-print("\nsaved: overall_scaling.png, stage_breakdown.png, stage_scaling.png")
+    axR.plot(T, sp, "o-", color=C[s], lw=2, label=s)
+axR.plot(T, T, ":", color="#cccccc", lw=1.6, label="ideal linear")
+axR.set_xscale("log", base=2); axR.set_yscale("log", base=2); axR.set_xticks(T); axR.set_xticklabels(T)
+axR.set_yticks(T); axR.set_yticklabels(T)
+axR.set_xlabel("threads (-T)"); axR.set_ylabel("speedup vs T1")
+axR.set_title("Per-stage thread scaling", fontsize=11)
+axR.legend(fontsize=8.5); axR.grid(True, which="both", alpha=0.25)
+fig.tight_layout(); fig.savefig(os.path.join(PARENT, "stage_profile.png"), dpi=140)
+print("\nsaved: overall_scaling.png, stage_profile.png")
