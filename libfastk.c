@@ -1077,19 +1077,13 @@ void Free_Kmer_Stream(Kmer_Stream *_S)
   if (!S->clone)
     { free(S->neps);
       free(S->index);
-      //  Chunked-mode workaround: free(S->inver) sporadically segfaults in
-      //  the cleanup of the last chunk on large (human-scale) inputs.
-      //  Symptom: SIGSEGV inside libc free() for the final chunk's original
-      //  T2 stream after all useful work is done. Clones and earlier chunks
-      //  free cleanly, and the issue does not reproduce on small datasets
-      //  at any chunk count. Most likely an out-of-bounds write somewhere
-      //  in the chunked merge that corrupts the inver mmap's allocator
-      //  metadata; an ASAN-instrumented investigation is the next step.
-      //  Until that is resolved we deliberately skip freeing S->inver
-      //  (~60 MB per stream, ~480 MB total over a -C 4 run on human data).
-      //  The OS reclaims it at process exit. Re-enable once the writer is
-      //  identified and fixed.
-      //  free(S->inver);
+      //  Re-enabled: the sporadic free() corruption was caused by the merge
+      //  cache being undersized by 1 byte/entry in chunked mode (KBYTE used
+      //  (has_lcp?1:0) instead of always +1 for the in-memory LCP byte; see
+      //  FastGA.c). That heap-buffer-overflow corrupted the inver mmap's
+      //  allocator metadata. With the cache sized correctly, ASAN is clean
+      //  and this free() no longer faults, so the leak workaround is removed.
+      free(S->inver);
     }
   free(S->name);
   free(S->table);
