@@ -2,7 +2,7 @@
 
 Quantifies the `optimize-memory` storage optimizations (Opt1 + Opt3) **on the current
 upstream** (`ddeea32`), after rebasing the branch off the old baseline (`5671357`).
-Companion to [`benchmark_storage_upstream.md`](benchmark_storage_upstream.md).
+Companion to [`benchmark_baseline/storage_profiling.md`](benchmark_baseline/storage_profiling.md).
 
 ## Setup
 

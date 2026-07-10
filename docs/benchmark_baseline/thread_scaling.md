@@ -1,13 +1,10 @@
 # FastGA Thread Scaling — New Upstream Build (2026-07-09)
 
-Thread scaling study of the **current upstream FastGA** on the repo EXAMPLE
-dataset. This is a fresh run of the same methodology used in
-[`old_archive/benchmark_performance.md`](old_archive/benchmark_performance.md), which recorded the
-`optimize-memory` build back on 2026-03-21. Use this doc for the new-build
-numbers; the older doc remains the record of the previous build.
+Thread scaling study of the **current upstream FastGA** (`ddeea32`) on the repo EXAMPLE
+dataset — end-to-end build+align wall clock, CPU, and peak RSS vs thread count (T=1…32).
 
-> **Companion storage study:** [`benchmark_storage_upstream.md`](benchmark_storage_upstream.md)
-> compares the disk footprint of the old vs new upstream (verdict: byte-identical, thread-independent).
+> **Companion:** [`storage_profiling.md`](storage_profiling.md) — the disk-storage profile
+> for the same build.
 
 ## Build Under Test
 
@@ -45,7 +42,7 @@ FastGA hard-caps threads at 32. Results cover T=1..32.
 | 16 | 20.2  | 105.4 | 28.2 | 662% | 682 | 6.37x | 39.8%  | 323,569 |
 | 32 | 16.2  | 122.5 | 31.1 | 946% | 740 | 7.94x | 24.8%  | 323,569 |
 
-![Thread scaling: new upstream build](thread_scaling_new_upstream.png)
+![Thread scaling: new upstream build](thread_scaling.png)
 
 *Left: end-to-end wall clock (log-log). Right: speedup vs T=1 against ideal
 linear; the 32-thread hard cap bounds the x-axis.*
@@ -66,41 +63,31 @@ because serial-heavy phases dominate on this small dataset:
 
 On the human genome (3.1 Gbp) the parallel alignment phase dominates, so
 scaling there is materially better (see the human T=32 section of
-`old_archive/benchmark_performance.md`).
+`../old_archive/benchmark_performance.md`).
 
 **Memory grows modestly.** Peak RSS 513 MB (T=1) → 740 MB (T=32), 1.44x for 32x
 threads — per-thread buffers are small relative to shared structures.
 
-## Comparison vs the 2026-03-21 optimize-memory build
-
-Same machine, same dataset, same method — but **different sessions/dates**, so
-system load was not controlled. Treat this as indicative, not a rigorous
-back-to-back comparison.
-
-| Threads | Wall new (s) | Wall old (s) | Speedup new | Speedup old |
-|--------:|-------------:|-------------:|------------:|------------:|
-| 1  | 128.4 | 133.7 | 1.00x | 1.00x |
-| 2  | 69.5  | 73.1  | 1.85x | 1.83x |
-| 4  | 45.6  | 48.8  | 2.82x | 2.74x |
-| 8  | 28.5  | 32.6  | 4.50x | 4.10x |
-| 16 | 20.2  | 24.6  | 6.37x | 5.43x |
-| 32 | 16.2  | 22.0  | 7.94x | 6.07x |
-
-The new upstream build is consistently faster and scales somewhat better,
-most visibly at high thread counts (T=32: 16.2s vs 22.0s, ~26% faster). This is
-suggestive of upstream improvements between the two builds, but a controlled
-alternating re-run on an idle node would be needed to confirm it rather than
-attribute it to load differences.
-
 ## Reproduce
 
-Raw data and scripts are in
-[`benchmark_thread_scaling_upstream/`](benchmark_thread_scaling_upstream/):
-- `run_thread_scaling.sh` — the driver (edit `THREADS`/`REPS`)
-- `results.tsv` — parsed per-run metrics
-- `analyze.py` — builds the median table and the figure
+The baseline is **stock upstream** FastGA. This branch's own `make` bakes in the
+optimizations, so build `main` (= upstream `ddeea32` + `.gitignore`) separately:
 
 ```bash
-bash docs/benchmark_thread_scaling_upstream/run_thread_scaling.sh
-python3 docs/benchmark_thread_scaling_upstream/analyze.py
+# 1. Build a stock-upstream baseline binary in a throwaway worktree
+git worktree add /tmp/fastga-baseline main
+make -C /tmp/fastga-baseline
+
+# 2. Run the T=1…32 x3 sweep against it (writes thread_scaling_data/results.tsv)
+FASTGA=/tmp/fastga-baseline/FastGA \
+  bash docs/benchmark_baseline/thread_scaling_data/run_thread_scaling.sh
+
+# 3. Rebuild the median table + this figure from results.tsv
+python3 docs/benchmark_baseline/thread_scaling_data/analyze.py
+
+# cleanup
+git worktree remove /tmp/fastga-baseline
 ```
+
+`thread_scaling_data/`: `run_thread_scaling.sh` (driver; override `THREADS`/`REPS` via env),
+`results.tsv` (committed per-run metrics), `analyze.py` (→ median table + `thread_scaling.png`).
