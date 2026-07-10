@@ -50,3 +50,9 @@ benchmarks/storage_audit_v2/
 
 # Git worktrees
 .worktrees/
+
+# Verification scratch
+benchmarks/verify_*
+benchmarks/opt1_timeline/
+*.asan
+FastGA.asan
