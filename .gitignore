@@ -59,3 +59,4 @@ FastGA.asan
 benchmarks/agent_opt_stages/*/work/
 benchmarks/agent_opt_stages/*/tmp/
 benchmarks/agent_opt_stages/*/*.1aln
+__pycache__/

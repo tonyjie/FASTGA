@@ -2,7 +2,7 @@
 
 Storage footprint of **stock upstream FastGA** (`ddeea32`) on the EXAMPLE dataset
 (`HAP1.fasta.gz` × `HAP2.fasta.gz`, ~86 Mbp each), default (no-mask) run.
-Companion to [`thread_scaling.md`](thread_scaling.md).
+Companion to [`performance_profiling.md`](performance_profiling.md).
 
 ![Baseline storage profiling](storage_profiling.png)
 

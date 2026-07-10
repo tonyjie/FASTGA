@@ -1,0 +1,60 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/performance_data/logs/T08_rep3.Llog ./HAP1.fasta.gz
+
+  Total Resources:  0.432u  0.028s  0.461w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/performance_data/logs/T08_rep3.Llog -T8 -P. ./HAP1.1gdb
+
+  Partitioning K-mers via pos-lists into 8 parts
+
+  Resources for phase:  1.249u  0.074s  0.190w  695.6%
+
+  Sorting & output of each part
+
+  Sampled:      64661214 ( 75.0%) kmers/positions
+
+  Resources for phase:  6.135u  0.772s  1.424w  485.1%
+
+  Total Resources:  7.385u  0.846s  1.614w  509.9%  0MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/performance_data/logs/T08_rep3.Llog ./HAP2.fasta.gz
+
+  Total Resources:  0.439u  0.024s  0.463w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/performance_data/logs/T08_rep3.Llog -T8 -P. ./HAP2.1gdb
+
+  Partitioning K-mers via pos-lists into 8 parts
+
+  Resources for phase:  1.249u  0.083s  0.189w  702.0%
+
+  Sorting & output of each part
+
+  Sampled:      65045862 ( 75.0%) kmers/positions
+
+  Resources for phase:  6.088u  0.797s  1.392w  494.5%
+
+  Total Resources:  7.338u  0.880s  1.582w  519.4%  0MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA-baseline/FastGA -v -T8 -P. -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/performance_data/logs/T08_rep3.Llog HAP1.fasta.gz HAP2.fasta.gz
+
+  Using 8 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 51082720, ave. len = 28.5, seeds per genome position = 0.6
+
+  Resources for phase:  4.014u  25.135s  7.517w  387.8%
+
+  Seed sort and alignment search, 16 parts
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:22.642u  1.099s  16.590w  504.8%
+
+  Converting aln's to PAF-format
+
+  Resources for phase:  0.000u  0.012s  0.129w  10.2%
+
+  Total Resources:  1:26.657u  26.247s  24.237w  465.8%  0MB
