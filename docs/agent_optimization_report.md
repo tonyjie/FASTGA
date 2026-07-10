@@ -98,6 +98,12 @@ was the same overflow corrupting the mmap's allocator metadata.
 
 ## Human-genome validation (GRCh38 × CHM13, ~3.1 Gbp each, T=32)
 
+> **Per-stage detail:** [`agent_optimization/human_stages/`](agent_optimization/human_stages/)
+> profiles each cumulative stage on human (storage footprint over time + runtime breakdown),
+> showing Opt1's plateau collapse, Opt3/Opt4's persistent shrink, and Opt C's chunked sawtooth.
+> It also documents that the reported `-C16` "5 GB" is persistent-only — the real peak,
+> counting the unlinked-open seed temp, is ~18.7 GB (still −74% vs baseline).
+
 ![human](agent_optimization/human.png)
 
 Confirmed on the full human pair. All configs **bit-exact** (ONEview payload md5
