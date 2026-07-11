@@ -60,3 +60,8 @@ benchmarks/agent_opt_stages/*/work/
 benchmarks/agent_opt_stages/*/tmp/
 benchmarks/agent_opt_stages/*/*.1aln
 __pycache__/
+
+# profiling-matrix raw per-rep artifacts (keep aggregated results + figure)
+docs/benchmark_matrix/divergence/*/logs/
+docs/benchmark_matrix/divergence/*/time/
+docs/benchmark_matrix/divergence/*/*.stderr
