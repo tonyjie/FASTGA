@@ -39,3 +39,14 @@ def test_intervening_fastga_not_counted():
     assert p["rss_mb"] == 19.0
     assert p["n_aln"] == 777
     assert p["ave_len"] == 300
+
+def test_aggregate_one_point(tmp_path):
+    from aggregate_matrix import aggregate
+    d = tmp_path / "divergence" / "human" / "logs"
+    d.mkdir(parents=True)
+    for r in (1, 2, 3):
+        (d / f"rep{r}.Llog").write_text(open(os.path.join(FIX, f"rep{r}.Llog")).read())
+    tsv = aggregate(str(tmp_path / "divergence"), [("human", 0)])
+    body = open(tsv).read()
+    assert "human" in body and "Sort+align" in body
+    assert os.path.exists(os.path.join(str(tmp_path / "divergence"), "divergence_phase_share.png"))

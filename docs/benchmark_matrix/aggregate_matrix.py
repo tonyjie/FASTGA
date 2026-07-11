@@ -110,3 +110,57 @@ def parse_llog(path):
                   for s, v in cpu.items()}
     out["rss_mb"] = rss_mb; out["n_aln"] = n_aln; out["ave_len"] = ave_len
     return out
+
+import os, glob, statistics as _st, sys
+
+def point_median(logs_dir):
+    reps = [parse_llog(p) for p in sorted(glob.glob(os.path.join(logs_dir, "rep*.Llog")))]
+    if not reps:
+        raise FileNotFoundError(f"no rep*.Llog in {logs_dir}")
+    med = {}
+    for s in STAGES:
+        med[s] = _st.median(r[s] for r in reps)
+    med["rss_mb"] = _st.median(r["rss_mb"] for r in reps)
+    med["n_aln"]  = int(_st.median(r["n_aln"] for r in reps))
+    med["ave_len"] = int(_st.median(r["ave_len"] for r in reps))
+    med["total"]  = sum(med[s] for s in STAGES)
+    return med
+
+def aggregate(base_dir, points):
+    rows = []
+    for label, rank in sorted(points, key=lambda x: x[1]):
+        m = point_median(os.path.join(base_dir, label, "logs"))
+        rows.append((label, rank, m))
+    tsv = os.path.join(base_dir, "results.tsv")
+    with open(tsv, "w") as f:
+        f.write("label\trank\t" + "\t".join(STAGES) +
+                "\ttotal_s\tsort_align_share\trss_mb\tn_aln\tave_len\n")
+        for label, rank, m in rows:
+            f.write(f"{label}\t{rank}\t" + "\t".join(f"{m[s]:.1f}" for s in STAGES) +
+                    f"\t{m['total']:.1f}\t{m['Sort+align']/m['total']:.3f}"
+                    f"\t{m['rss_mb']:.0f}\t{m['n_aln']}\t{m['ave_len']}\n")
+    _plot(base_dir, rows)
+    return tsv
+
+def _plot(base_dir, rows):
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt, numpy as np
+    C = {"GDB": "#9e9e9e", "GIX": "#ff9800", "Seed merge": "#1976d2", "Sort+align": "#2e7d32"}
+    labels = [r[0] for r in rows]
+    x = np.arange(len(rows)); bottom = np.zeros(len(rows))
+    fig, ax = plt.subplots(figsize=(1.6 * len(rows) + 3, 4.5))
+    for s in STAGES:
+        share = np.array([r[2][s] / r[2]["total"] for r in rows])
+        ax.bar(x, share, bottom=bottom, color=C[s], label=s, width=0.62)
+        bottom += share
+    ax.set_xticks(x); ax.set_xticklabels(labels)
+    ax.set_ylabel("share of runtime"); ax.set_ylim(0, 1)
+    ax.set_title("FastGA per-phase share vs divergence (most similar → most divergent)")
+    ax.legend(loc="upper right", framealpha=0.95)
+    fig.tight_layout()
+    fig.savefig(os.path.join(base_dir, "divergence_phase_share.png"), dpi=140)
+
+if __name__ == "__main__":
+    base = sys.argv[1]
+    pts = [(a.split(":")[0], int(a.split(":")[1])) for a in sys.argv[2:]]
+    print("wrote", aggregate(base, pts))
