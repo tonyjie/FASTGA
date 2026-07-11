@@ -2,7 +2,7 @@
 
 For **each cumulative optimization stage** on `agent-optimization`, a storage footprint
 **over time** and a runtime **breakdown**, on the full human pair at T=32 — the per-stage
-detail behind the summary in [`../../agent_optimization_report.md`](../../agent_optimization_report.md).
+detail behind the summary in [`../agent_optimization_report.md`](../agent_optimization_report.md).
 Companion to the baseline profiling in [`../../benchmark_baseline/human/`](../../benchmark_baseline/human/).
 
 | Stage | binary | flags |

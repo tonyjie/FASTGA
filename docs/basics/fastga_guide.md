@@ -2,6 +2,10 @@
 
 This guide explains FastGA from the ground up — what it does, why it's designed the way it is, and what happens to your data at every step.
 
+> For the implementation-level companion — the concrete steps inside each stage, the functions
+> that run them, and exactly how each step is parallelized — see
+> [`fastga_implementation.md`](fastga_implementation.md).
+
 ---
 
 ## What Problem Does FastGA Solve?

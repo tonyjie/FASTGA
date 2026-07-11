@@ -35,7 +35,7 @@ The same three-part shape holds at both scales:
 That idle GIX plateau (≈64 GB doing nothing for 80% of a human run) is the central waste the
 optimization work attacks: **Opt1** frees the GIX right after the merge; **Opt3/Opt4** shrink
 per-entry size; **Opt C** never materializes both whole GIXs at once, cutting the peak itself
-(to ~5 GB at `-C16` on human). See [`../agent_optimization_report.md`](../agent_optimization_report.md).
+(to ~5 GB at `-C16` on human). See [`../agent_optimization/agent_optimization_report.md`](../agent_optimization/agent_optimization_report.md).
 
 ## Why measuring this is tricky
 

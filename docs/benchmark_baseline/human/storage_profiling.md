@@ -31,7 +31,7 @@ project's storage work attacks:
   sort+align plateau (time-integrated disk, the thing that makes concurrent jobs collide).
 - **Opt3/Opt4** shrink the per-entry GIX size (mask + LCP bytes).
 - **Opt C (chunked build/merge)** never lets both whole GIXs exist at once, cutting the ~64 GB
-  *peak* itself (to ~5 GB at `-C16`). See `../../agent_optimization_report.md`.
+  *peak* itself (to ~5 GB at `-C16`). See `../../agent_optimization/agent_optimization_report.md`.
 
 ## Why the peak is structural
 

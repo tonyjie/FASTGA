@@ -17,7 +17,7 @@ Both reproduce Ashir Rao's report numbers (~594 s / ~71 GB).
 
 Binary: **ddeea32 FastGA/GIXmake + a 5671357 FAtoGDB**. `ddeea32`'s own FAtoGDB
 **segfaults** building CHM13's GDB (the masked-sequence/`.ano` regression — see
-`../../agent_optimization_report.md`), so the GDB stage uses the working
+`../../agent_optimization/agent_optimization_report.md`), so the GDB stage uses the working
 old-upstream FAtoGDB; FastGA/GIXmake are current upstream.
 
 Measurement filesystems:

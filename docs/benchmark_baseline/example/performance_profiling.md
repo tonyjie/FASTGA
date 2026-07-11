@@ -70,8 +70,36 @@ Key observations:
   per-thread overhead outweighs the extra threads. It is a minor contributor by then, so this
   does not hurt the total much, but it is why pushing to T=32 gives diminishing returns.
 
-On the human genome (3.1 Gbp) the parallel sort+align phase dominates even more, so overall
-scaling there is materially better than on this small EXAMPLE.
+On the human genome (3.1 Gbp) the parallel sort+align phase dominates the runtime even more
+(81% vs 45% here). Note, though, that the sort+align *phase itself* parallelizes **worse** on
+human (~6 cores vs ~13 here) — see the CPU% table next.
+
+## Per-stage CPU% at T=32
+
+The scaling table above is wall-time; this is where the 32 cores actually go. CPU% =
+`(user+sys)/wall` (100% = 1 core), from the `-L` per-phase resources, median of 3 reps.
+Splitting `user` vs `sys` separates real parallel **compute** from parallel **I/O**.
+
+| Stage | wall (s) | share | CPU% | ≈ cores | user vs sys | what is parallel |
+|---|--:|--:|--:|--:|---|---|
+| GDB (`FAtoGDB` ×2) | 0.93 | 6% | 100% | 1 | user | nothing — single-threaded |
+| GIX (`GIXmake` ×2) | 3.35 | 21% | 710% | ~7 | user | k-mer distribute + radix sort |
+| Seed merge | 4.6 | 28% | 730% | ~7 | **mostly sys** | streaming both GIXs — I/O, not compute |
+| Sort + align (+output) | 7.2 | 45% | 1337% | ~13 | **mostly user** | per-contig chain + wave-align — real compute |
+| **Total (FastGA `-L`)** | — | | — | — | | |
+
+- **Seed merge's 730% is almost entirely `sys`** (~0.9 core `user` + ~6.5 cores `sys`): the
+  "parallelism" is the kernel paging both GIX files in across threads, not computation. On human
+  this rises to 2513% (~25 cores) — a 62 GB GIX gives the parallel reads much more to do.
+- **Sort+align's 1337% is almost entirely `user`** (95.6 s user / 7.2 s wall): genuine parallel
+  wave-alignment compute, ~13 of 32 cores. On human it *drops* to 598% (~6 cores) because a
+  handful of giant chromosomes can't be split across threads (align granularity = one genome-A
+  contig; `RSDsort.c:328-345`). EXAMPLE's contigs are comparably sized, so it balances cleanly.
+- The overall pipeline `/usr/bin/time` CPU% (945%, scaling table above) is lower than these
+  per-phase numbers because it also spans the serial GDB and inter-tool gaps.
+
+> See [`../performance_profiling.md`](../performance_profiling.md) → *"How each stage is
+> parallelized"* for the full per-stage parallelism model behind these numbers.
 
 ## Reproduce
 
