@@ -1,0 +1,60 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep3.Llog ./g1.fna
+
+  Total Resources:  6.688u  3.224s  9.915w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep3.Llog -T32 -P/scratch/jl4257/human_perf/tmp ./g1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  56.118u  2.389s  3.032w  1929.5%
+
+  Sorting & output of each part
+
+  Sampled:    2316875829 ( 73.9%) kmers/positions
+
+  Resources for phase:  4:40.275u  23.119s  39.047w  777.0%
+
+  Total Resources:  5:36.394u  25.508s  42.079w  860.0%  2MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep3.Llog ./g2.fna
+
+  Total Resources:  6.739u  2.959s  9.701w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep3.Llog -T32 -P/scratch/jl4257/human_perf/tmp ./g2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  50.729u  2.539s  4.116w  1294.1%
+
+  Sorting & output of each part
+
+  Sampled:    2305788869 ( 74.0%) kmers/positions
+
+  Resources for phase:  5:05.191u  20.681s  42.440w  767.8%
+
+  Total Resources:  5:55.921u  23.220s  46.556w  814.4%  2MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA-baseline/FastGA -v -T32 -P/scratch/jl4257/human_perf/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep3.Llog g1.fna g2.fna
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 1298273853, ave. len = 39.0, seeds per genome position = 0.4
+
+  Resources for phase:  1:53.214u  24.611s  5.484w  2512.9%
+
+  Seed sort and alignment search, 66 parts
+
+  Total hits over 85bp = 843675, 791660 aln's, 518037 non-redundant aln's of ave len 28415
+
+  Sorting and merging alignments
+
+  Resources for phase:  40:11.590u  8:36.827s  8:09.339w  598.4%
+
+  Converting aln's to PAF-format
+
+  Resources for phase:  0.000u  0.238s  0.624w  38.2%
+
+  Total Resources:  42:04.804u  9:01.677s  8:15.448w  618.9%  19MB

@@ -1,0 +1,60 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep2.Llog ./g1.fna
+
+  Total Resources:  13.709u  3.050s  16.765w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep2.Llog -T32 -P/scratch/jl4257/human_perf/tmp ./g1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  56.338u  2.525s  2.993w  1966.1%
+
+  Sorting & output of each part
+
+  Sampled:    2316875829 ( 73.9%) kmers/positions
+
+  Resources for phase:  4:39.801u  23.268s  39.233w  772.5%
+
+  Total Resources:  5:36.139u  25.793s  42.227w  857.1%  2MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep2.Llog ./g2.fna
+
+  Total Resources:  6.625u  3.259s  9.887w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep2.Llog -T32 -P/scratch/jl4257/human_perf/tmp ./g2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  51.599u  2.451s  4.077w  1325.7%
+
+  Sorting & output of each part
+
+  Sampled:    2305788869 ( 74.0%) kmers/positions
+
+  Resources for phase:  4:38.290u  21.691s  41.575w  721.5%
+
+  Total Resources:  5:29.889u  24.142s  45.652w  775.5%  2MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA-baseline/FastGA -v -T32 -P/scratch/jl4257/human_perf/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep2.Llog g1.fna g2.fna
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 1298273853, ave. len = 39.0, seeds per genome position = 0.4
+
+  Resources for phase:  1:51.813u  25.782s  5.367w  2563.6%
+
+  Seed sort and alignment search, 66 parts
+
+  Total hits over 85bp = 843675, 791660 aln's, 518037 non-redundant aln's of ave len 28415
+
+  Sorting and merging alignments
+
+  Resources for phase:  40:16.642u  8:42.608s  8:10.689w  599.0%
+
+  Converting aln's to PAF-format
+
+  Resources for phase:  0.002u  0.204s  0.629w  32.8%
+
+  Total Resources:  42:08.458u  9:08.595s  8:16.686w  619.5%  19MB
