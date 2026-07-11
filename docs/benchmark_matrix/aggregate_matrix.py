@@ -43,25 +43,19 @@ def parse_llog(path):
         elif re.search(r'GIXmake\b.* -', ln):
             gix_indices.append(i)
 
-    # Determine which prep to use: the one immediately before the last FastGA
+    # Determine which prep cycle to use: the single FAtoGDB x2 + GIXmake x2
+    # cycle that immediately precedes the FINAL FastGA invocation. Both scans
+    # are bounded to indices before last_fastga_idx so a stray GDB/GIX header
+    # occurring after the final FastGA run (if one ever existed) is ignored.
     last_fastga_idx = fastga_indices[-1] if fastga_indices else float('inf')
-    # Find the last GIXmake before last FastGA (it marks the end of the last prep pair)
-    last_prep_gix = None
-    for gix_idx in reversed(gix_indices):
-        if gix_idx < last_fastga_idx:
-            last_prep_gix = gix_idx
-            break
-    # Find the start of this prep pair (the last GDB at least one pair back)
+    gdb_before = [i for i in gdb_indices if i < last_fastga_idx]
+    gix_before = [i for i in gix_indices if i < last_fastga_idx]
+    # The last prep pair consists of the last 2 GDBs before last_fastga_idx, so
+    # its start is the 2nd-to-last GDB header. Only set this if there is also
+    # at least one GIXmake before last_fastga_idx (i.e. a prep cycle exists).
     last_prep_gdb_start = None
-    if last_prep_gix is not None:
-        # The last prep pair consists of the last 2 GDBs before last_fastga_idx
-        # So we want to include lines starting from the 3rd-to-last GDB
-        gdb_count_from_end = 0
-        for gdb_idx in reversed(gdb_indices):
-            gdb_count_from_end += 1
-            if gdb_count_from_end == 2:  # The 3rd GDB from the end marks the start of last pair
-                last_prep_gdb_start = gdb_idx
-                break
+    if gix_before and len(gdb_before) >= 2:
+        last_prep_gdb_start = gdb_before[-2]
 
     # Second pass: accumulate GDB/GIX from the target range
     sect = None
@@ -92,8 +86,14 @@ def parse_llog(path):
                 m = re.search(r'([\d]+)\s+non-redundant aln.s of ave len\s+([\d]+)', ln)
                 if m: n_aln = int(m.group(1)); ave_len = int(m.group(2))
         elif last_prep_gdb_start is not None and i >= last_prep_gdb_start and i < last_fastga_idx:
-            # Handle prep section (only the last 2 GDB+GIX pairs)
-            if re.search(r'FAtoGDB\b.* -', ln):
+            # Handle prep section (only the last 2 GDB+GIX pairs). An earlier,
+            # non-final FastGA invocation can fall inside this index window
+            # (e.g. repeated FastGA runs sharing one prep cycle); reset sect
+            # so that block's own "Total Resources" (peak RSS, not GDB/GIX
+            # wall time) is never attributed to GDB/GIX.
+            if re.search(r'FastGA\b.* -T', ln):
+                sect = None
+            elif re.search(r'FAtoGDB\b.* -', ln):
                 sect = "gdb"
             elif re.search(r'GIXmake\b.* -', ln):
                 sect = "gix"
