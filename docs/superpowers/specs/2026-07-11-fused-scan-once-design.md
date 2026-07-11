@@ -44,15 +44,24 @@ wall). `k_sort` reads pos-lists read-only (`GIXmake.c:1459`), and `.split` is wr
    (A user running `-n` standalone would leave pos-lists behind — a minor, documented wart, since
    `-n` is effectively FastGA-internal; the chunk loop deletes them after the run.)
 
-2. **`-R` reuse flag (skip scan).** When `-R` is given:
+2. **Counts sidecar.** `k_sort`'s finger step (`GIXmake.c:1387-1398`) reads `Buckets[j][i]` = the
+   real per-(thread, bucket) entry counts, which `scan_thread` fills (`bzero` + `buck[w]++`,
+   `GIXmake.c:428+`). So the `-n` scan build snapshots `Buckets` to a per-genome sidecar
+   `<SORT_PATH>/.<ROOT>.gcnt` (NTHREADS × NUM_BUCK `int64` = ≤256 KB) **right after `distribute()`
+   returns, before `k_sort`** (which mangles `Buckets` into fingers). Written once per genome.
+
+3. **`-R` reuse flag (skip scan).** When `-R` is given, reconstruct the scan's output state without
+   re-scanning, then sort:
    - **skip `distribute()`** entirely (no sample pass, no scan pass, no pos-list writes);
-   - take `NPARTS` / `Ksplit` from `-X` (already wired at `GIXmake.c:2016`);
+   - `NPARTS` / `Ksplit` from `-X` (already wired at `GIXmake.c:2016`), and **rebuild `Select[]`**
+     from `Ksplit` (the exact loop already at `GIXmake.c:731-737`);
+   - load `Buckets[][]` from the `.gcnt` counts sidecar;
    - **open** the existing persistent pos-lists by their deterministic name (read-only, no
      `O_CREAT`/`O_TRUNC`);
    - run `k_sort()` for the `-C` partition range only, exactly as today.
 
-   `-R` is always used together with `-C` and `-X`. If the expected pos-lists are missing, error out
-   (a caller bug).
+   `-R` is always used together with `-C` and `-X`. If the pos-lists or `.gcnt` are missing, error
+   out (a caller bug).
 
 ### FastGA changes (chunk path only)
 
