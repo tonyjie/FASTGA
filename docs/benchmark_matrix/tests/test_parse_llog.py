@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 from aggregate_matrix import sec, res, parse_llog
 
 FIX = os.path.join(HERE, "fixtures", "human", "logs")
+SYN = os.path.join(HERE, "fixtures", "synthetic")
 
 def test_sec_formats():
     assert sec("6.706") == 6.706
@@ -24,3 +25,17 @@ def test_parse_human_shares():
     assert 0.10 <= p["GIX"] / total <= 0.20
     assert p["n_aln"] == 518037
     assert p["rss_mb"] == 19.0
+
+def test_intervening_fastga_not_counted():
+    # Two FastGA invocations share a single prep cycle (FAtoGDB/GIXmake x2).
+    # The FIRST (non-final) FastGA invocation's own "Total Resources" line
+    # (520.000w, 15MB) must NOT be summed into GDB/GIX or reported as rss_mb;
+    # only the SECOND (final) invocation's phases/rss/aln stats should surface.
+    p = parse_llog(os.path.join(SYN, "two_fastga_shared_prep.Llog"))
+    assert p["GDB"] == 18.0
+    assert p["GIX"] == 87.0
+    assert p["Seed merge"] == 7.0
+    assert p["Sort+align"] == 480.0
+    assert p["rss_mb"] == 19.0
+    assert p["n_aln"] == 777
+    assert p["ave_len"] == 300

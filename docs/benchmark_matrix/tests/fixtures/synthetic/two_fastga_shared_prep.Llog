@@ -1,0 +1,72 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_matrix/tests/fixtures/synthetic/two_fastga_shared_prep.Llog ./g1.fna
+
+  Total Resources:  6.000u  3.000s  9.000w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_matrix/tests/fixtures/synthetic/two_fastga_shared_prep.Llog -T32 -P/scratch/tmp ./g1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  40.000u  2.000s  40.000w  800.0%
+
+  Sorting & output of each part
+
+  Total Resources:  42.000u  20.000s  42.000w  780.0%  2MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_matrix/tests/fixtures/synthetic/two_fastga_shared_prep.Llog ./g2.fna
+
+  Total Resources:  6.000u  3.000s  9.000w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_matrix/tests/fixtures/synthetic/two_fastga_shared_prep.Llog -T32 -P/scratch/tmp ./g2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  43.000u  2.000s  43.000w  800.0%
+
+  Sorting & output of each part
+
+  Total Resources:  45.000u  20.000s  45.000w  780.0%  2MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/FastGA -v -T32 -P/scratch/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_matrix/tests/fixtures/synthetic/two_fastga_shared_prep.Llog g1.fna g2.fna
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 1000, ave. len = 39.0, seeds per genome position = 0.4
+
+  Resources for phase:  100u  10s  6.000w  2000.0%
+
+  Seed sort and alignment search, 8 parts
+
+  Total hits over 85bp = 111, 222 aln's, 100 non-redundant aln's of ave len 500
+
+  Sorting and merging alignments
+
+  Resources for phase:  4000u  100s  500.000w  600.0%
+
+  Converting aln's to PAF-format
+
+  Total Resources:  4200u  120s  520.000w  600.0%  15MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/FastGA -v -T32 -P/scratch/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_matrix/tests/fixtures/synthetic/two_fastga_shared_prep.Llog g1.fna g2.fna
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 1000, ave. len = 39.0, seeds per genome position = 0.4
+
+  Resources for phase:  110u  11s  7.000w  2100.0%
+
+  Seed sort and alignment search, 8 parts
+
+  Total hits over 85bp = 999, 888 aln's, 777 non-redundant aln's of ave len 300
+
+  Sorting and merging alignments
+
+  Resources for phase:  4100u  110s  480.000w  610.0%
+
+  Converting aln's to PAF-format
+
+  Total Resources:  4300u  130s  490.000w  610.0%  19MB
