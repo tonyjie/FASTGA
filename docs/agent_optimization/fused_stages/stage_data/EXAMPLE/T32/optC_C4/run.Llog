@@ -1,0 +1,180 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog ./HAP1.fasta.gz
+
+  Total Resources:  0.420u  0.044s  0.465w  100.0%  0MB
+
+GIXmake -v -n -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.740u  0.178s  0.149w  1283.5%
+
+  Sorting & output of each part
+
+  Sampled:      64661214 ( 75.0%) kmers/positions
+
+  Resources for phase:  8.815u  0.716s  1.057w  901.6%
+
+  Total Resources:  10.555u  0.894s  1.206w  948.9%  0MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog ./HAP2.fasta.gz
+
+  Total Resources:  0.399u  0.068s  0.467w  100.0%  0MB
+
+GIXmake -v -n -X./.HAP1.split -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.643u  0.222s  0.173w  1074.8%
+
+  Sorting & output of each part
+
+  Sampled:      65045862 ( 75.0%) kmers/positions
+
+  Resources for phase:  8.924u  0.789s  1.147w  846.8%
+
+  Total Resources:  10.568u  1.012s  1.320w  876.8%  0MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/../FASTGA-fused-wt-optC/FastGA -v -T32 -C4 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -1:/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/work/out HAP1.fasta.gz HAP2.fasta.gz
+
+  Using 32 threads
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C1:8 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP1
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.679u  0.190s  0.140w  1327.6%
+
+  Sorting & output of each part
+
+  Sampled:      16167735 ( 18.7%) kmers/positions
+
+  Resources for phase:  2.232u  0.442s  0.531w  502.9%
+
+  Total Resources:  3.912u  0.633s  0.672w  675.6%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C1:8 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP2
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.617u  0.155s  0.168w  1049.3%
+
+  Sorting & output of each part
+
+  Sampled:      16260161 ( 18.7%) kmers/positions
+
+  Resources for phase:  2.247u  0.496s  0.571w  480.0%
+
+  Total Resources:  3.864u  0.651s  0.740w  609.8%  0MB
+
+  Adaptive seed merge for G1
+
+  Total seeds = 12806409, ave. len = 28.5, seeds per genome position = 0.1
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C9:16 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP1
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.684u  0.147s  0.140w  1303.1%
+
+  Sorting & output of each part
+
+  Sampled:      16187297 ( 18.8%) kmers/positions
+
+  Resources for phase:  2.217u  0.461s  0.504w  530.8%
+
+  Total Resources:  3.901u  0.609s  0.645w  699.1%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C9:16 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP2
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.680u  0.136s  0.169w  1070.5%
+
+  Sorting & output of each part
+
+  Sampled:      16279079 ( 18.8%) kmers/positions
+
+  Resources for phase:  2.283u  0.413s  0.517w  521.1%
+
+  Total Resources:  3.963u  0.549s  0.687w  656.7%  0MB
+
+  Adaptive seed merge for G1
+
+  Total seeds = 12764662, ave. len = 28.5, seeds per genome position = 0.1
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C17:24 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP1
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.809u  0.208s  0.149w  1349.2%
+
+  Sorting & output of each part
+
+  Sampled:      16136382 ( 18.7%) kmers/positions
+
+  Resources for phase:  2.524u  0.403s  0.529w  553.0%
+
+  Total Resources:  4.333u  0.611s  0.678w  728.3%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C17:24 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP2
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.795u  0.189s  0.182w  1089.8%
+
+  Sorting & output of each part
+
+  Sampled:      16224472 ( 18.7%) kmers/positions
+
+  Resources for phase:  2.353u  0.515s  0.549w  522.0%
+
+  Total Resources:  4.148u  0.705s  0.731w  663.3%  0MB
+
+  Adaptive seed merge for G1
+
+  Total seeds = 12727317, ave. len = 28.5, seeds per genome position = 0.1
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C25:32 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP1
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.777u  0.226s  0.143w  1392.1%
+
+  Sorting & output of each part
+
+  Sampled:      16169800 ( 18.8%) kmers/positions
+
+  Resources for phase:  2.409u  0.458s  0.556w  515.0%
+
+  Total Resources:  4.187u  0.684s  0.700w  695.3%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/optC_C4/run.Llog -C25:32 -X./.HAP1.split -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_optC_C4/tmp ./HAP2
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.878u  0.159s  0.196w  1038.6%
+
+  Sorting & output of each part
+
+  Sampled:      16282150 ( 18.8%) kmers/positions
+
+  Resources for phase:  2.440u  0.393s  0.567w  499.0%
+
+  Total Resources:  4.319u  0.553s  0.764w  637.6%  0MB
+
+  Adaptive seed merge for G1
+
+  Total seeds = 12784332, ave. len = 28.5, seeds per genome position = 0.1
+
+  Resources for phase:  2:45.931u  12.182s  31.385w  567.5%
+
+  Seed sort and alignment search, 6 parts
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:39.288u  1.863s  7.179w  1409.0%
+
+  Total Resources:  4:25.220u  14.061s  38.582w  723.9%  0MB

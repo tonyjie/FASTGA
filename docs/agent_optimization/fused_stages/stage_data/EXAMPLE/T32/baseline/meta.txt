@@ -1,0 +1,1 @@
+bindir=/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/../FASTGA-fused-wt-ddeea32 flags= loc=real T=32 G1=/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP1.fasta.gz G2=/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/EXAMPLE/HAP2.fasta.gz

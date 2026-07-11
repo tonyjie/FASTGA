@@ -1,0 +1,368 @@
+
+  Creating genome data base (GDB) HAP1.1gdb in the current directory
+
+  Total Resources:  0.429u  0.032s  0.461w  100.0%  0MB
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.600u  0.256s  0.124w  1494.5%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Sorting part 2      Compressing part 2    Sorting part 3      Compressing part 3    Sorting part 4      Compressing part 4    Sorting part 5      Compressing part 5    Sorting part 6      Compressing part 6    Sorting part 7      Compressing part 7    Sorting part 8      Compressing part 8    Sorting part 9      Compressing part 9    Sorting part 10      Compressing part 10    Sorting part 11      Compressing part 11    Sorting part 12      Compressing part 12    Sorting part 13      Compressing part 13    Sorting part 14      Compressing part 14    Sorting part 15      Compressing part 15    Sorting part 16      Compressing part 16    Sorting part 17      Compressing part 17    Sorting part 18      Compressing part 18    Sorting part 19      Compressing part 19    Sorting part 20      Compressing part 20    Sorting part 21      Compressing part 21    Sorting part 22      Compressing part 22    Sorting part 23      Compressing part 23    Sorting part 24      Compressing part 24    Sorting part 25      Compressing part 25    Sorting part 26      Compressing part 26    Sorting part 27      Compressing part 27    Sorting part 28      Compressing part 28    Sorting part 29      Compressing part 29    Sorting part 30      Compressing part 30    Sorting part 31      Compressing part 31    Sorting part 32      Compressing part 32    Done                                           
+
+  Sampled:      64661214 ( 75.0%) kmers/positions
+
+  Resources for phase:  8.713u  0.814s  1.048w  909.0%
+
+  Total Resources:  10.314u  1.071s  1.172w  970.9%  0MB
+
+  Creating genome data base (GDB) HAP2.1gdb in the current directory
+
+  Total Resources:  0.431u  0.032s  0.463w  100.0%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.635u  0.220s  0.149w  1242.3%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Sorting part 2      Compressing part 2    Sorting part 3      Compressing part 3    Sorting part 4      Compressing part 4    Sorting part 5      Compressing part 5    Sorting part 6      Compressing part 6    Sorting part 7      Compressing part 7    Sorting part 8      Compressing part 8    Sorting part 9      Compressing part 9    Sorting part 10      Compressing part 10    Sorting part 11      Compressing part 11    Sorting part 12      Compressing part 12    Sorting part 13      Compressing part 13    Sorting part 14      Compressing part 14    Sorting part 15      Compressing part 15    Sorting part 16      Compressing part 16    Sorting part 17      Compressing part 17    Sorting part 18      Compressing part 18    Sorting part 19      Compressing part 19    Sorting part 20      Compressing part 20    Sorting part 21      Compressing part 21    Sorting part 22      Compressing part 22    Sorting part 23      Compressing part 23    Sorting part 24      Compressing part 24    Sorting part 25      Compressing part 25    Sorting part 26      Compressing part 26    Sorting part 27      Compressing part 27    Sorting part 28      Compressing part 28    Sorting part 29      Compressing part 29    Sorting part 30      Compressing part 30    Sorting part 31      Compressing part 31    Sorting part 32      Compressing part 32    Done                                           
+
+  Sampled:      65045862 ( 75.0%) kmers/positions
+
+  Resources for phase:  8.626u  0.860s  1.116w  849.7%
+
+  Total Resources:  10.262u  1.080s  1.266w  895.9%  0MB
+
+  Using 32 threads
+
+  Chunk-wise merge: 8 chunks of 32 partitions
+
+  --- Chunk 1/8 (partitions 1-4) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  96.4%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Outputing part 1      Sorting part 2      Compressing part 2    Outputing part 2      Sorting part 3      Compressing part 3    Outputing part 3      Sorting part 4      Compressing part 4    Outputing part 4      Done                                           
+
+  Sampled:       8078833 (  9.4%) kmers/positions
+
+  Resources for phase:  1.036u  0.394s  0.348w  410.5%
+
+  Total Resources:  1.036u  0.402s  0.357w  402.8%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  97.8%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Outputing part 1      Sorting part 2      Compressing part 2    Outputing part 2      Sorting part 3      Compressing part 3    Outputing part 3      Sorting part 4      Compressing part 4    Outputing part 4      Done                                           
+
+  Sampled:       8124094 (  9.4%) kmers/positions
+
+  Resources for phase:  1.083u  0.326s  0.350w  401.9%
+
+  Total Resources:  1.083u  0.334s  0.360w  394.0%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed  17%    Completed  19%    Completed  22%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6415138, ave. len = 28.5, seeds per genome position = 0.1
+
+  --- Chunk 2/8 (partitions 5-8) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  99.3%
+
+  Starting sort & index output of each part
+    Sorting part 5      Compressing part 5    Outputing part 1      Sorting part 6      Compressing part 6    Outputing part 2      Sorting part 7      Compressing part 7    Outputing part 3      Sorting part 8      Compressing part 8    Outputing part 4      Done                                           
+
+  Sampled:       8088902 (  9.4%) kmers/positions
+
+  Resources for phase:  1.097u  0.357s  0.315w  461.1%
+
+  Total Resources:  1.097u  0.365s  0.324w  451.4%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  95.7%
+
+  Starting sort & index output of each part
+    Sorting part 5      Compressing part 5    Outputing part 1      Sorting part 6      Compressing part 6    Outputing part 2      Sorting part 7      Compressing part 7    Outputing part 3      Sorting part 8      Compressing part 8    Outputing part 4      Done                                           
+
+  Sampled:       8136067 (  9.4%) kmers/positions
+
+  Resources for phase:  1.093u  0.357s  0.317w  457.6%
+
+  Total Resources:  1.093u  0.366s  0.326w  447.3%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6391271, ave. len = 28.5, seeds per genome position = 0.1
+
+  --- Chunk 3/8 (partitions 9-12) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  100.0%
+
+  Starting sort & index output of each part
+    Sorting part 9      Compressing part 9    Outputing part 1      Sorting part 10      Compressing part 10    Outputing part 2      Sorting part 11      Compressing part 11    Outputing part 3      Sorting part 12      Compressing part 12    Outputing part 4      Done                                           
+
+  Sampled:       8069505 (  9.4%) kmers/positions
+
+  Resources for phase:  1.249u  0.260s  0.320w  470.6%
+
+  Total Resources:  1.249u  0.268s  0.329w  461.0%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.009s  0.009w  96.1%
+
+  Starting sort & index output of each part
+    Sorting part 9      Compressing part 9    Outputing part 1      Sorting part 10      Compressing part 10    Outputing part 2      Sorting part 11      Compressing part 11    Outputing part 3      Sorting part 12      Compressing part 12    Outputing part 4      Done                                           
+
+  Sampled:       8113191 (  9.4%) kmers/positions
+
+  Resources for phase:  1.231u  0.320s  0.357w  434.3%
+
+  Total Resources:  1.231u  0.329s  0.367w  424.8%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6412589, ave. len = 28.6, seeds per genome position = 0.1
+
+  --- Chunk 4/8 (partitions 13-16) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  95.9%
+
+  Starting sort & index output of each part
+    Sorting part 13      Compressing part 13    Outputing part 1      Sorting part 14      Compressing part 14    Outputing part 2      Sorting part 15      Compressing part 15    Outputing part 3      Sorting part 16      Compressing part 16    Outputing part 4      Done                                           
+
+  Sampled:       8117792 (  9.4%) kmers/positions
+
+  Resources for phase:  1.263u  0.316s  0.330w  477.4%
+
+  Total Resources:  1.263u  0.325s  0.340w  466.8%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.009w  95.8%
+
+  Starting sort & index output of each part
+    Sorting part 13      Compressing part 13    Outputing part 1      Sorting part 14      Compressing part 14    Outputing part 2      Sorting part 15      Compressing part 15    Outputing part 3      Sorting part 16      Compressing part 16    Outputing part 4      Done                                           
+
+  Sampled:       8165888 (  9.4%) kmers/positions
+
+  Resources for phase:  1.214u  0.344s  0.331w  469.8%
+
+  Total Resources:  1.214u  0.353s  0.341w  459.7%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6352073, ave. len = 28.4, seeds per genome position = 0.1
+
+  --- Chunk 5/8 (partitions 17-20) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  100.0%
+
+  Starting sort & index output of each part
+    Sorting part 17      Compressing part 17    Outputing part 1      Sorting part 18      Compressing part 18    Outputing part 2      Sorting part 19      Compressing part 19    Outputing part 3      Sorting part 20      Compressing part 20    Outputing part 4      Done                                           
+
+  Sampled:       8010993 (  9.3%) kmers/positions
+
+  Resources for phase:  1.232u  0.339s  0.323w  485.5%
+
+  Total Resources:  1.232u  0.348s  0.332w  475.6%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  100.0%
+
+  Starting sort & index output of each part
+    Sorting part 17      Compressing part 17    Outputing part 1      Sorting part 18      Compressing part 18    Outputing part 2      Sorting part 19      Compressing part 19    Outputing part 3      Sorting part 20      Compressing part 20    Outputing part 4      Done                                           
+
+  Sampled:       8055859 (  9.3%) kmers/positions
+
+  Resources for phase:  1.254u  0.291s  0.324w  476.5%
+
+  Total Resources:  1.254u  0.300s  0.333w  466.8%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6302004, ave. len = 28.6, seeds per genome position = 0.1
+
+  --- Chunk 6/8 (partitions 21-24) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  95.6%
+
+  Starting sort & index output of each part
+    Sorting part 21      Compressing part 21    Outputing part 1      Sorting part 22      Compressing part 22    Outputing part 2      Sorting part 23      Compressing part 23    Outputing part 3      Sorting part 24      Compressing part 24    Outputing part 4      Done                                           
+
+  Sampled:       8125389 (  9.4%) kmers/positions
+
+  Resources for phase:  1.189u  0.337s  0.323w  472.3%
+
+  Total Resources:  1.190u  0.345s  0.332w  462.1%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.009s  0.009w  97.2%
+
+  Starting sort & index output of each part
+    Sorting part 21      Compressing part 21    Outputing part 1      Sorting part 22      Compressing part 22    Outputing part 2      Sorting part 23      Compressing part 23    Outputing part 3      Sorting part 24      Compressing part 24    Outputing part 4      Done                                           
+
+  Sampled:       8168613 (  9.4%) kmers/positions
+
+  Resources for phase:  1.251u  0.263s  0.323w  467.7%
+
+  Total Resources:  1.251u  0.272s  0.333w  456.9%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6425313, ave. len = 28.5, seeds per genome position = 0.1
+
+  --- Chunk 7/8 (partitions 25-28) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  96.2%
+
+  Starting sort & index output of each part
+    Sorting part 25      Compressing part 25    Outputing part 1      Sorting part 26      Compressing part 26    Outputing part 2      Sorting part 27      Compressing part 27    Outputing part 3      Sorting part 28      Compressing part 28    Outputing part 4      Done                                           
+
+  Sampled:       8063872 (  9.4%) kmers/positions
+
+  Resources for phase:  1.201u  0.325s  0.317w  481.2%
+
+  Total Resources:  1.201u  0.333s  0.326w  470.6%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  96.3%
+
+  Starting sort & index output of each part
+    Sorting part 25      Compressing part 25    Outputing part 1      Sorting part 26      Compressing part 26    Outputing part 2      Sorting part 27      Compressing part 27    Outputing part 3      Sorting part 28      Compressing part 28    Outputing part 4      Done                                           
+
+  Sampled:       8125117 (  9.4%) kmers/positions
+
+  Resources for phase:  1.182u  0.326s  0.344w  437.9%
+
+  Total Resources:  1.182u  0.334s  0.353w  429.1%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6360563, ave. len = 28.5, seeds per genome position = 0.1
+
+  --- Chunk 8/8 (partitions 29-32) ---
+
+  Creating genome index (GIX) HAP1.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.008w  99.2%
+
+  Starting sort & index output of each part
+    Sorting part 29      Compressing part 29    Outputing part 1      Sorting part 30      Compressing part 30    Outputing part 2      Sorting part 31      Compressing part 31    Outputing part 3      Sorting part 32      Compressing part 32    Outputing part 4      Done                                           
+
+  Sampled:       8105928 (  9.4%) kmers/positions
+
+  Resources for phase:  1.243u  0.256s  0.336w  445.4%
+
+  Total Resources:  1.243u  0.264s  0.345w  436.7%  0MB
+
+  Creating genome index (GIX) HAP2.gix in the current directory
+  -X: inherited NPARTS=32 from ./.HAP1.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  0.000u  0.008s  0.009w  92.3%
+
+  Starting sort & index output of each part
+    Sorting part 29      Compressing part 29    Outputing part 1      Sorting part 30      Compressing part 30    Outputing part 2      Sorting part 31      Compressing part 31    Outputing part 3      Sorting part 32      Compressing part 32    Outputing part 4      Done                                           
+
+  Sampled:       8157033 (  9.4%) kmers/positions
+
+  Resources for phase:  1.217u  0.284s  0.350w  428.6%
+
+  Total Resources:  1.217u  0.293s  0.359w  419.8%  0MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 6423769, ave. len = 28.5, seeds per genome position = 0.1
+
+  Resources for phase:  2:51.164u  16.297s  38.338w  489.0%
+
+  Starting seed sort and alignment search, 6 parts
+    Loading seeds for part 1      Sorting seeds for part 1      Searching seeds for part 1    Loading seeds for part 2      Sorting seeds for part 2      Searching seeds for part 2    Loading seeds for part 3      Sorting seeds for part 3      Searching seeds for part 3    Loading seeds for part 4      Sorting seeds for part 4      Searching seeds for part 4    Loading seeds for part 5      Sorting seeds for part 5      Searching seeds for part 5    Loading seeds for part 6      Sorting seeds for part 6      Searching seeds for part 6    Done                        
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:39.406u  2.212s  7.183w  1414.6%
+
+  Total Resources:  4:30.572u  18.526s  45.538w  634.8%  0MB

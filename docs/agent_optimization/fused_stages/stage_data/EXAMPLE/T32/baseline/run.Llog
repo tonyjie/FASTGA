@@ -1,0 +1,56 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/baseline/run.Llog ./HAP1.fasta.gz
+
+  Total Resources:  0.437u  0.030s  0.468w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/baseline/run.Llog -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_baseline/tmp ./HAP1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.750u  0.186s  0.153w  1264.7%
+
+  Sorting & output of each part
+
+  Sampled:      64661214 ( 75.0%) kmers/positions
+
+  Resources for phase:  8.816u  1.181s  1.486w  672.4%
+
+  Total Resources:  10.566u  1.368s  1.640w  727.7%  0MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/baseline/run.Llog ./HAP2.fasta.gz
+
+  Total Resources:  0.426u  0.043s  0.470w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/baseline/run.Llog -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_baseline/tmp ./HAP2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  1.581u  0.239s  0.175w  1038.7%
+
+  Sorting & output of each part
+
+  Sampled:      65045862 ( 75.0%) kmers/positions
+
+  Resources for phase:  9.128u  1.054s  1.612w  631.4%
+
+  Total Resources:  10.709u  1.294s  1.788w  671.3%  0MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/../FASTGA-fused-wt-ddeea32/FastGA -v -T32 -P/scratch/jl4257/fused_stages/EXAMPLE/T32_baseline/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T32/baseline/run.Llog -1:/scratch/jl4257/fused_stages/EXAMPLE/T32_baseline/work/out HAP1.fasta.gz HAP2.fasta.gz
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 51082720, ave. len = 28.5, seeds per genome position = 0.6
+
+  Resources for phase:  3.837u  30.367s  4.843w  706.3%
+
+  Seed sort and alignment search, 6 parts
+
+  Total hits over 85bp = 338700, 376250 aln's, 323569 non-redundant aln's of ave len 1953
+
+  Sorting and merging alignments
+
+  Resources for phase:  1:32.857u  2.550s  7.305w  1306.0%
+
+  Total Resources:  1:36.695u  32.941s  12.171w  1065.1%  0MB

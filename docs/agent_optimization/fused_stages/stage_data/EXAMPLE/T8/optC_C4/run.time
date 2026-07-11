@@ -1,0 +1,23 @@
+	Command being timed: "/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/../FASTGA-fused-wt-optC/FastGA -v -T8 -C4 -P/scratch/jl4257/fused_stages/EXAMPLE/T8_optC_C4/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/agent_optimization/fused_stages/stage_data/EXAMPLE/T8/optC_C4/run.Llog -1:/scratch/jl4257/fused_stages/EXAMPLE/T8_optC_C4/work/out HAP1.fasta.gz HAP2.fasta.gz"
+	User time (seconds): 278.49
+	System time (seconds): 15.19
+	Percent of CPU this job got: 368%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:19.73
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 497412
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 8
+	Minor (reclaiming a frame) page faults: 1648523
+	Voluntary context switches: 16303
+	Involuntary context switches: 1396
+	Swaps: 0
+	File system inputs: 1152
+	File system outputs: 7795944
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
