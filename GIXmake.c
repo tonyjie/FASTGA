@@ -686,6 +686,32 @@ static void write_counts_sidecar(char *tpath, char *troot)
   free(sname);
 }
 
+static int read_counts_sidecar(char *tpath, char *troot)
+{ char *sname;
+  int   fd, nt, np;
+
+  sname = Malloc(strlen(tpath)+strlen(troot)+20,"Allocating gcnt path");
+  if (sname == NULL) return (-1);
+  sprintf(sname,"%s/.%s.gcnt",tpath,troot);
+  fd = open(sname,O_RDONLY);
+  if (fd < 0)
+    { fprintf(stderr,"%s: -R cannot open counts sidecar %s\n",Prog_Name,sname);
+      free(sname); return (-1);
+    }
+  if (read(fd,&nt,sizeof(int)) != sizeof(int) || read(fd,&np,sizeof(int)) != sizeof(int)
+      || nt != NTHREADS || np != NPARTS)
+    { fprintf(stderr,"%s: -R counts sidecar %s mismatch (T/NPARTS)\n",Prog_Name,sname);
+      close(fd); free(sname); return (-1);
+    }
+  if (read(fd,Buckets[0],((int64) NTHREADS)*NUM_BUCK*sizeof(int64))
+        != (ssize_t)(((int64) NTHREADS)*NUM_BUCK*sizeof(int64)))
+    { fprintf(stderr,"%s: -R counts sidecar %s truncated\n",Prog_Name,sname);
+      close(fd); free(sname); return (-1);
+    }
+  close(fd); free(sname);
+  return (0);
+}
+
 //  Create a thread for each DB section, and have it distribute syncmer posts to NTHREAD files
 //     according to the 1st byte of its k-mer.
 
@@ -1816,6 +1842,11 @@ int main(int argc, char *argv[])
     STUB_ONLY = flags['n'];
     REUSE     = flags['R'];
 
+    if (REUSE && REF_STUB == NULL)
+      { fprintf(stderr,"%s: -R requires -X\n",Prog_Name);
+        exit (1);
+      }
+
     KBYTES  = (KMER>>2);
     if (argc < 2 || argc > 3)
       { fprintf(stderr,"\nUsage: %s %s\n",Prog_Name,Usage[0]);
@@ -2131,13 +2162,23 @@ int main(int argc, char *argv[])
     for (p = 0; p < NTHREADS; p++)
       for (i = 0; i < NPARTS; i++)
         { name = Numbered_Suffix(POST_NAME,k,".idx");
-          Units[k] = open(name,O_RDWR|O_CREAT|O_TRUNC,S_IRWXU);
-          if (Units[k] < 0)
-            { fprintf(stderr,"%s: Cannot open %s for reading & writing\n",Prog_Name,name);
-              exit (1);
+          if (REUSE)   //  -R reads the scan build's pos-lists: must not create/truncate them
+            { Units[k] = open(name,O_RDONLY);
+              if (Units[k] < 0)
+                { fprintf(stderr,"%s: -R cannot open pos-list %s (was -n scan run first?)\n",
+                                 Prog_Name,name);
+                  exit (1);
+                }
             }
-          if (!(STUB_ONLY || REUSE))   //  cooperative mode keeps pos-lists for the -R builds
-            unlink(name);
+          else
+            { Units[k] = open(name,O_RDWR|O_CREAT|O_TRUNC,S_IRWXU);
+              if (Units[k] < 0)
+                { fprintf(stderr,"%s: Cannot open %s for reading & writing\n",Prog_Name,name);
+                  exit (1);
+                }
+              if (!STUB_ONLY)   //  cooperative mode keeps pos-lists for the -R builds
+                unlink(name);
+            }
           k += 1;
         }
   }
@@ -2152,17 +2193,31 @@ int main(int argc, char *argv[])
       MyBlock = Malloc(p2,"Allocating memory block");
   }
     
-  distribute(gdb);   //  Distribute k-mers to 1st byte partitions, encoded as compressed
-                     //    relative positions of the given k-mers
+  if (REUSE)
+    { int i, p;                    //  reconstruct scan output without re-scanning
+      for (i = 0; i <= NPARTS; i++)   //  Ksplit from -X (REF_KSPLIT already read)
+        Ksplit[i] = REF_KSPLIT[i];
+      p = 0;                          //  Select from Ksplit (mirrors GIXmake.c:733-737)
+      for (i = 0; i < NUM_BUCK; i++)
+        { while (p < NPARTS && Ksplit[p+1] <= i) p += 1;
+          Select[i] = p;
+        }
+      if (read_counts_sidecar(TPATH,TROOT) < 0)   //  Buckets counts from .gcnt
+        exit (1);
+    }
+  else
+    { distribute(gdb);   //  Distribute k-mers to 1st byte partitions, encoded as compressed
+                         //    relative positions of the given k-mers
 
-  if (STUB_ONLY)               //  the scan build: snapshot Buckets before k_sort mangles it
-    write_counts_sidecar(TPATH,TROOT);
+      if (STUB_ONLY)               //  the scan build: snapshot Buckets before k_sort mangles it
+        write_counts_sidecar(TPATH,TROOT);
 
-  //  Write the Ksplit sidecar so a second genome can inherit it via -X.
-  //  Skipped in chunked mode so per-chunk builds don't clobber the sidecar
-  //  written during the initial stub-only (-n) pass.
-  if (!CHUNKED)
-    write_ksplit_sidecar(TPATH,TROOT);
+      //  Write the Ksplit sidecar so a second genome can inherit it via -X.
+      //  Skipped in chunked mode so per-chunk builds don't clobber the sidecar
+      //  written during the initial stub-only (-n) pass.
+      if (!CHUNKED)
+        write_ksplit_sidecar(TPATH,TROOT);
+    }
 
   if (VERBOSE)
     { TimeTo(stderr,0,LOG_FILE==NULL);
