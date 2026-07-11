@@ -5362,12 +5362,12 @@ int main(int argc, char *argv[])
 
             if (LOG_FILE)
               { fclose(LOG_FILE);
-                sprintf(cmd,"GIXmake%s -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+                sprintf(cmd,"GIXmake%s -R -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
                         VERBOSE?" -v":"",LOG_PATH,cfirst,clast,PATH1,ROOT1,
                         NTHREADS,SORT_PATH,PATH1,ROOT1);
               }
             else
-              sprintf(cmd,"GIXmake%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+              sprintf(cmd,"GIXmake%s -R -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
                       VERBOSE?" -v":"",cfirst,clast,PATH1,ROOT1,
                       NTHREADS,SORT_PATH,PATH1,ROOT1);
             if (system(cmd) != 0)
@@ -5381,12 +5381,12 @@ int main(int argc, char *argv[])
 
             if (LOG_FILE)
               { fclose(LOG_FILE);
-                sprintf(cmd,"GIXmake%s -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+                sprintf(cmd,"GIXmake%s -R -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
                         VERBOSE?" -v":"",LOG_PATH,cfirst,clast,PATH1,ROOT1,
                         NTHREADS,SORT_PATH,PATH2,ROOT2);
               }
             else
-              sprintf(cmd,"GIXmake%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
+              sprintf(cmd,"GIXmake%s -R -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
                       VERBOSE?" -v":"",cfirst,clast,PATH1,ROOT1,
                       NTHREADS,SORT_PATH,PATH2,ROOT2);
             if (system(cmd) != 0)
@@ -5434,6 +5434,22 @@ int main(int argc, char *argv[])
               free(gname);
             }
           }
+
+        //  Scan-once cleanup: the -n scan builds persisted pos-lists (in SORT_PATH) and
+        //  a .gcnt counts sidecar (in each genome's own TPATH, i.e. PATH1/PATH2 -- see
+        //  write_counts_sidecar(TPATH,TROOT) in GIXmake.c) for the -R chunk builds to
+        //  reuse; remove them now.
+        { int p;
+          int glen = strlen(SORT_PATH)+strlen(PATH1)+strlen(PATH2)+
+                     strlen(ROOT1)+strlen(ROOT2)+40;
+          char *gn = Malloc(glen,"cleanup");
+          for (p = 0; p < g2_nparts*NTHREADS; p++)
+            { sprintf(gn,"%s/.post.%s.%d.idx",SORT_PATH,ROOT1,p); unlink(gn);
+              sprintf(gn,"%s/.post.%s.%d.idx",SORT_PATH,ROOT2,p); unlink(gn); }
+          sprintf(gn,"%s/.%s.gcnt",PATH1,ROOT1); unlink(gn);
+          sprintf(gn,"%s/.%s.gcnt",PATH2,ROOT2); unlink(gn);
+          free(gn);
+        }
 
         free(cmd);
 
