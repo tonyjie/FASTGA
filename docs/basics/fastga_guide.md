@@ -249,7 +249,9 @@ Imagine two genomes share a long identical region. As we slide position-by-posit
 
 So between any two "minimum changes," at least one syncmer position is selected. This guarantees that within any shared stretch of ~12+ identical bases, both genomes will select at least one syncmer in the same position. No true match can be missed.
 
-**Density:** In practice, ~75–81% of positions pass the syncmer filter. After indexing both forward and reverse complement strands, the total number of index entries is roughly the genome size in bases.
+**Density:** Roughly **35–40% of positions are selected** as syncmers. (Theory for SMER=8 / TMER=12: the 12-mer window holds 5 overlapping 8-mers, and the position is kept only when the minimal 8-mer sits at one of the two ends — about 2/5 of the time.) Since every selected position emits **two** entries (forward + reverse complement, see below), the index ends up with ~0.7 entries per genome base — i.e. the total number of index entries is roughly **70% of the genome size**, which for GRCh38 is the measured ~2.2 billion entries.
+
+> Note: FastGA's verbose output prints a `Sampled: N (X%)` line reporting ~75–81%. That percentage is **entries per position counting both strands**, *not* the per-position selection rate — with ~2 entries per selected position it works out to ~0.7–0.8 per position, consistent with the ~35–40% single-strand selection above. Don't read the `Sampled %` as "fraction of positions kept."
 
 ### Both strands
 
@@ -323,8 +325,10 @@ Per ktab entry (human genome, original code):
   On disk in .ktab file: 15 bytes per entry
 ```
 
-*(Note: Our Optimization 3 on the `optimize-memory` branch removes the mask byte when
-masking is off, shrinking entries to 14 bytes. But the original code always includes it.)*
+*(Note: this 15-byte layout is the **original** upstream code. Our optimizations shrink it:
+Optimization 3 removes the always-zero mask byte when masking is off (→ 14 bytes), and
+Optimization 4 additionally drops the LCP byte and recomputes it on the fly (→ 13 bytes).
+The original code always stores all 15.)*
 
 Let's go through each field:
 
@@ -412,24 +416,18 @@ These are used during the GIX build phase as intermediate data — they store th
 Let's trace the numbers for a 3 Gbp human genome:
 
 ```
-Genome size:           3,000,000,000 bases
-Syncmer rate:          ~80% of positions selected
-Both strands:          × 2
-Total index entries:   3B × 0.80 × 2 ≈ 4.8 billion entries
+Genome size:           3,100,000,000 bases (GRCh38)
+Syncmer selection:     ~35% of positions kept (per strand)
+Entries per position:  × 2 (forward + reverse complement)
+Total index entries:   3.1B × 0.35 × 2 ≈ 2.2 billion entries
+                       (measured: ~2.2 billion for GRCh38)
 
   (Each entry is stored individually — even if two positions share
    the same k-mer sequence, both get their own entry with their
    own position/contig fields. Duplicates get LCP = 40.)
 
 Per entry on disk:     15 bytes (7 suffix + 1 mask + 1 LCP + 4 position + 2 contig)
-K-mer table total:     4.8B × 15 ≈ 72 GB ... but the measured value is ~32 GB.
-
-  The discrepancy is because the ~80% syncmer rate is an upper-bound
-  estimate used for memory allocation. The actual selection rate is
-  lower due to edge effects, short contigs, and the canonical
-  (strand-aware) filtering. Measured: ~2.2 billion entries for GRCh38.
-
-Measured math:         2.2B × 15 ≈ 33 GB
+K-mer table total:     2.2B × 15 ≈ 33 GB
 Plus .gix stub:        0.128 GB
 
 Total GIX:             ~32.5 GB per genome (measured: 32.5 GB for GRCh38)

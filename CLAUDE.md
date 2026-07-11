@@ -107,7 +107,7 @@ FastGA genome1
 # Step-by-step (manual pipeline)
 FAtoGDB genome1.fa                          # FASTA -> .1gdb
 FAtoGDB genome2.fa
-GIXmake -v -T8 genome1                     # .1gdb -> .gix + .ktab + .post
+GIXmake -v -T8 genome1                     # .1gdb -> .gix + .ktab (new format; positions embedded in .ktab)
 GIXmake -v -T8 genome2
 FastGA -v -T8 -k genome1.gix genome2.gix   # align using pre-built indices
 ALNshow genome1 genome2 output.1aln         # view alignments
@@ -166,12 +166,15 @@ The pipeline has 4 major phases inside `FastGA.c`:
 - Supports random contig access without text parsing
 
 ### GIX (.gix + hidden files)
-- Truncated suffix array of syncmer-filtered K-mers (K=40)
-- Each entry: 10 bytes (2-bit packed 40-mer) + 2 bytes (contig #) + 4 bytes (signed position)
-- Plus LCP (longest common prefix) array computed during MSD radix sort
-- Hidden partition files: `.<root>.ktab.<1..NPARTS>` (k-mer table) + `.<root>.post.<1..NPARTS>` (position lists)
+- Truncated suffix array of syncmer-filtered K-mers (K=40, closed syncmer TMER=12/SMER=8, ~50% of positions kept)
+- Built by `GIXmake.c`: distribute (syncmer scan) → MSD radix sort (`MSDsort.c`) → compress/index. Sort array entry = `swide` bytes: LCP/marker byte + packed 40-mer (`KBYTES=10`) + position (`PostBytes`) + contig#/strand (`ContBytes`, high bit = reverse-complement).
+- **New GIX format (current `main`, what GIXmake now writes):**
+  - Hidden partition files: `.<root>.ktab.<1..NPARTS>` only — the sorted position + contig fields are embedded **inside** the ktab entries (there is no separate `.post.*`).
+  - On disk each entry drops 3 bytes vs. the in-memory form: the LCP byte + 2 redundant prefix bytes (recoverable from the `.gix` prefix index).
+  - `NPARTS` is chosen so each sort partition is ≈4 GB, rounded to a multiple of `-T` and clamped to [8, 64].
+- **Old GIX format (legacy; FastGA/GIXrm/GIXshow/GIXxfer still read it):** `.<root>.ktab.<1..N>` (k-mer table) **+** `.<root>.post.<1..N>` (separate position lists). FastGA auto-detects it (`NEW_GIX = P->nels == 0`); it errors if the two input indices are different versions.
+- The `.gix` stub file itself contains a 128MB prefix index (2^24 = 16M int64 entries, indexing the first 12 bases / 24 bits of the canonical k-mer), plus a trailer (`Perm[]` length-sort permutation, `PostBytes`/`ContBytes`, `freq`, `format_flags`).
 - **Size: ~10.1-10.5 GB per Gbp of genome** (measured on human genomes; README says ~14 GB/Gbp, paper ~11 GB/Gbp)
-- The `.gix` stub file itself contains a 128MB prefix index (16M int64 entries)
 
 ### ALN (.1aln)
 - ONEcode binary with trace-point encoding (delta=100bp panels)
