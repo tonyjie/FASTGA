@@ -65,6 +65,7 @@ static int CHUNK_FIRST;  //  First partition to output (0-based), default 0
 static int CHUNK_LAST;   //  Last partition to output (0-based, inclusive), default NPARTS-1
 static int CHUNKED;      //  Non-zero if -C flag was given
 static int STUB_ONLY;    //  -n: write .gix stub only, no ktab partition files
+static int REUSE;        //  -R: reuse persisted pos-lists (+.gcnt) from a prior -n scan, skip distribute()
 static char *REF_STUB;   //  -X <path>: path to reference .gix stub to inherit NPARTS/Ksplit from
 static int   REF_NPARTS;          //  NPARTS read from reference stub (used when REF_STUB != NULL)
 static int  *REF_KSPLIT;          //  Ksplit read from reference stub (NPARTS+1 entries)
@@ -659,6 +660,28 @@ static void write_ksplit_sidecar(char *tpath, char *troot)
   if (fd < 0) { free(sname); return; }
   write(fd,&NPARTS,sizeof(int));
   write(fd,Ksplit,(NPARTS+1)*sizeof(int));
+  close(fd);
+  free(sname);
+}
+
+//  Buckets counts sidecar (.gcnt): the per-(thread,bucket) entry counts that scan_thread
+//  leaves in Buckets after distribute() — exactly what k_sort's finger step reads. Written by
+//  the -n scan build right after distribute() (before k_sort mangles Buckets into fingers),
+//  read by -R builds so they can k_sort without re-scanning.  Format: int NTHREADS, int NPARTS,
+//  then NTHREADS*NUM_BUCK int64 from the contiguous Buckets[0].
+
+static void write_counts_sidecar(char *tpath, char *troot)
+{ char *sname;
+  int   fd;
+
+  sname = Malloc(strlen(tpath)+strlen(troot)+20,"Allocating gcnt path");
+  if (sname == NULL) return;
+  sprintf(sname,"%s/.%s.gcnt",tpath,troot);
+  fd = open(sname,O_WRONLY|O_CREAT|O_TRUNC,0666);
+  if (fd < 0) { free(sname); return; }
+  write(fd,&NTHREADS,sizeof(int));
+  write(fd,&NPARTS,sizeof(int));
+  write(fd,Buckets[0],((int64) NTHREADS)*NUM_BUCK*sizeof(int64));
   close(fd);
   free(sname);
 }
@@ -1734,6 +1757,7 @@ int main(int argc, char *argv[])
     CHUNK_LAST  = -1;
     CHUNKED     = 0;
     STUB_ONLY   = 0;
+    REUSE       = 0;
     REF_STUB    = NULL;
     REF_NPARTS  = 0;
     REF_KSPLIT  = NULL;
@@ -1743,7 +1767,7 @@ int main(int argc, char *argv[])
       if (argv[i][0] == '-')
         switch (argv[i][1])
         { default:
-            ARG_FLAGS("vn")
+            ARG_FLAGS("vnR")
             break;
           case 'k':
             ARG_NON_NEGATIVE(KMER,"index k-mer size");
@@ -1790,6 +1814,7 @@ int main(int argc, char *argv[])
 
     VERBOSE   = flags['v'];
     STUB_ONLY = flags['n'];
+    REUSE     = flags['R'];
 
     KBYTES  = (KMER>>2);
     if (argc < 2 || argc > 3)
@@ -1909,8 +1934,11 @@ int main(int argc, char *argv[])
 
   //  Open GDB
 
-  POST_NAME = Strdup(Catenate(SORT_PATH,"/.",Numbered_Suffix("post.",getpid(),"."),""),
-                     "Allocating post index name");
+  if (STUB_ONLY || REUSE)
+    POST_NAME = Strdup(Catenate(SORT_PATH,"/.post.",TROOT,"."),"Allocating post name");
+  else
+    POST_NAME = Strdup(Catenate(SORT_PATH,"/.",Numbered_Suffix("post.",getpid(),"."),""),
+                       "Allocating post name");
 
   Read_GDB(gdb,tpath);
   short_GDB_fix(gdb);
@@ -2108,7 +2136,8 @@ int main(int argc, char *argv[])
             { fprintf(stderr,"%s: Cannot open %s for reading & writing\n",Prog_Name,name);
               exit (1);
             }
-          unlink(name);
+          if (!(STUB_ONLY || REUSE))   //  cooperative mode keeps pos-lists for the -R builds
+            unlink(name);
           k += 1;
         }
   }
@@ -2125,6 +2154,9 @@ int main(int argc, char *argv[])
     
   distribute(gdb);   //  Distribute k-mers to 1st byte partitions, encoded as compressed
                      //    relative positions of the given k-mers
+
+  if (STUB_ONLY)               //  the scan build: snapshot Buckets before k_sort mangles it
+    write_counts_sidecar(TPATH,TROOT);
 
   //  Write the Ksplit sidecar so a second genome can inherit it via -X.
   //  Skipped in chunked mode so per-chunk builds don't clobber the sidecar
