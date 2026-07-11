@@ -9,6 +9,9 @@ understanding the performance profile:
 3. **What does it cost?** — each step's share of the wall time and its CPU% (≈ how many of the 32
    cores it actually uses), measured at T=32.
 
+For the **memory/disk** side — why the index lives on disk, whether you could run RAM-only, and how
+data moves between RAM and disk — see [`fastga_storage_and_memory.md`](fastga_storage_and_memory.md).
+
 **How to read this doc:** each stage opens with an **"In plain terms"** paragraph (intuition, no
 code). Read just those four for the big picture. Concrete function/line pointers are parked in a
 one-line **Code pointers** note at the end of each stage, so they never get in the way.

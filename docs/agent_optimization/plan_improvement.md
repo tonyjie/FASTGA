@@ -6,77 +6,91 @@ Proposed, not-yet-implemented improvements to the bilateral chunked build/merge 
 
 ---
 
-## 1. Scan the genome once, not once per chunk
+## 1. Fuse per-bin sort with per-bin merge — never write the ktab to disk
 
-### The problem — redundant full-genome scans
+### The insight
 
-Opt C's wall-time penalty is almost entirely **redundant re-computation of GIXmake's Phase A**
-(the syncmer scan / "distribute"). On the human pair at `-C16`, `Index + merge` jumps
-**102 → 305 s (+204 s, +33 % total wall)** — and that extra time is the scan being repeated.
+GIX build and seed merge decompose into **independent per-bin work**: bin *i*'s k-mers of A can
+only ever match bin *i*'s k-mers of B (a match needs ≥12 shared prefix bases ⊃ the same 5-base
+bucket ⊃ the same bin; both genomes share the same `Ksplit` boundaries). So you **never need the
+whole sorted index at once** — you can *sort one bin, merge it, throw it away, and move to the
+next*. The sorted ktab is a throwaway intermediate, not something that has to be persisted.
 
-**Why it repeats (code):**
-- `-C cfirst:clast` gates **only Phase B** — the sort/output loop is
-  `for (part = CHUNK_FIRST; part <= CHUNK_LAST; part++)` (`GIXmake.c:1453`).
-- **Phase A (`distribute` = `sample_thread` + `scan_thread`, `GIXmake.c:669-780`) is *not* gated**
-  by `-C`; it runs in full every invocation — it scans the whole genome, finds all syncmers, and
-  writes the pos-lists for **all** `NPARTS` partitions.
-- The chunk loop drives GIXmake as **one separate process per chunk** (blocking `system()` calls,
-  `FastGA.c:5350-5436`), and the pos-list intermediates are **process-local temp files** (opened
-  then immediately `unlink`ed, gone at process exit). So each chunk's fresh GIXmake process must
-  re-run the full Phase A scan just to regenerate pos-lists it already computed on the previous
-  chunk.
-
-**Net:** with `-C16`, each genome is fully scanned **16×** (once per chunk) → **32 full-genome
-scans** vs. the baseline's **2**. The scan can't be narrowed to one prefix range (you must compute
-every position's k-mer to know its prefix), so the whole-genome scan is paid in full each time.
-Phase B (the sort) is *not* redundant — 64 partitions are still sorted once overall, just spread
-across the 16 processes.
-
-### The fix — do Phase A once, loop Phase B per chunk
-
-Reorder so the expensive scan happens a single time:
+Today FastGA persists it anyway: GIXmake sorts every bin and writes **all** of it to `.ktab`
+(~62 GB for human), then the seed merge streams that same 62 GB back off disk. The preferred fix is
+to **fuse the two so the ktab is never materialized**:
 
 ```
-scan each genome ONCE  →  keep all NPARTS pos-lists on disk
-for chunk k in 0..K-1:
-    sort + write only chunk-k partitions of A   (Phase B on the retained pos-lists)
-    sort + write only chunk-k partitions of B
-    merge chunk-k of A vs chunk-k of B  →  emit seeds
-    delete chunk-k ktabs
-delete the retained pos-lists
+scan each genome ONCE  →  pos-lists for all bins (held in RAM ~4 GB, or small on disk)
+for bin i in 0..NPARTS-1:
+    sort bin i of A in RAM            (from A's pos-lists)
+    sort bin i of B in RAM            (from B's pos-lists — same Ksplit boundaries)
+    merge A-bin_i vs B-bin_i in RAM   →  emit seeds
+    discard both sorted bins
 ```
 
-This is a pure **reordering of when Phase A runs** — it changes no k-mer, no partition boundary,
-no merge result, so it stays **bit-exact**.
+Peak extra RAM = one A-bin + one B-bin held sorted at a time (~4 GB each, the existing ~4 GB/bin
+sizing) plus the pos-lists. The **62 GB ktab is never written**.
 
-Two ways to implement it:
-- **(A) Integrated single process.** Teach FastGA's chunked path (or a new GIXmake mode) to run
-  `distribute` once, retain the pos-lists, then loop `k_sort` over one chunk at a time and hand
-  each chunk to `adaptamer_merge` in-process. Cleanest, but touches the GIXmake/FastGA boundary.
-- **(B) Cache Phase A across processes.** Add a "scan-only" GIXmake mode that writes **persistent**
-  pos-lists once; each per-chunk GIXmake then reads those instead of re-scanning. Smaller code
-  change (keeps the one-process-per-chunk structure), at the cost of a persistent pos-list dir.
+### Why it is strictly better than both current paths
 
-### Trade-off — pos-lists must live through the loop
+- **vs. baseline:** skips writing the ~62 GB ktab *and* reading it back for the merge (~124 GB of
+  I/O avoided). Not slower — likely a touch faster.
+- **vs. Opt C:** Opt C re-scans the whole genome **per chunk** (a separate GIXmake process per
+  chunk; pos-lists are process-local temp), costing **+204 s / +33 % wall** on human. Fusing scans
+  each genome **once** — no redundant computation at all.
+- **Correctness:** the per-bin merge is complete because matches never cross bins — *provided both
+  genomes use identical bin boundaries* (exactly what the shared `Ksplit` / `-X` guarantees). It is
+  a reorder + fuse only, so **bit-exact**.
 
-The catch: retaining all pos-lists for both genomes across the chunk loop costs some **persistent
-temp storage** that today is freed between chunks. Rough sizing: the pos-lists are the
-delta-encoded position stream (≈ the old `.post` intermediate, ~2 GB/genome for human) → **~4 GB**
-for both genomes held through the loop. That is small next to the current ~18.7 GB real peak, so
-the peak should rise only modestly while the +204 s scan penalty largely disappears.
+For reference, why Opt C's re-scan happens today (the thing this proposal removes): `-C` gates only
+Phase B (`for (part = CHUNK_FIRST; ...; part++)`, `GIXmake.c:1453`); Phase A (`distribute` =
+`sample_thread` + `scan_thread`, `GIXmake.c:669-780`) runs in full every invocation; and the chunk
+loop calls GIXmake as one `system()` process per chunk (`FastGA.c:5350-5436`) whose pos-lists are
+`unlink`ed at exit — so every chunk re-scans the whole genome. With `-C16` that is **32 full-genome
+scans vs. 2**. Fusing does the scan once and keeps its output in-process.
+
+### What it costs / caveats
+
+- **The pos-lists are still needed.** The scan must finish before *any* bin is complete (a bin's
+  members are scattered across the whole genome), so both genomes' pos-lists (~2 GB each, the
+  delta-encoded position stream) must exist after the scan. Hold them in RAM (~4 GB → truly zero
+  disk) or on disk (~4 GB, negligible next to 62 GB).
+- **The ~9 GB seed-pair temp still materializes.** This removes the *GIX* from disk, not the seeds;
+  the seeds are consumed later by sort+align. (Fusing that too is the harder Backlog item.)
+- **You give up the reusable persistent GIX.** Ideal for a **one-shot pairwise A-vs-B** (or
+  disk-constrained / RAM-rich runs); worse for **one-vs-many**, where a persistent index is built
+  once and reused — here you would re-scan A on every comparison.
+- **Higher peak RAM** — bins are held in RAM instead of streamed from disk. This is the intended
+  trade when RAM is the abundant resource (see
+  [`../basics/fastga_storage_and_memory.md`](../basics/fastga_storage_and_memory.md)).
+- **Engineering.** Fuse GIXmake's `k_sort` (bin sort) with FastGA's `adaptamer_merge` (bin merge)
+  into one in-process pipeline; the merge must read from an in-RAM sorted array instead of a
+  `Kmer_Stream` (disk). Moderate refactor, clean logically — and it also drops the multi-process
+  `system()` split that the chunked path uses today.
+
+### Lesser variant (if not fusing)
+
+If GIXmake and the merge stay separate steps, at minimum **scan once and retain the pos-lists**,
+then loop per-chunk sort → merge → delete reading those retained pos-lists. This alone removes Opt
+C's re-scan penalty (recovers most of the +204 s) while still briefly writing each chunk's ktab to
+disk and reading it back — simpler, but keeps a small ktab-on-disk footprint.
 
 ### Expected outcome (to be measured)
 
-| | today (`-C16`) | after "scan once" |
-|---|--:|--:|
-| Index + merge wall | 305 s | ~110–130 s (target: near baseline 102 s) |
-| Total wall vs baseline | +33 % | ~+2–5 % |
-| Real peak scratch | 18.7 GB | ~20–23 GB (pos-lists add ~4 GB) |
-| Correctness | bit-exact | bit-exact (reorder only) |
+| | baseline | Opt C `-C16` today | **fused (preferred)** |
+|---|--:|--:|--:|
+| GIX on disk | ~62 GB | ~5 GB sawtooth | **~0 (RAM)** |
+| Redundant full-genome scans | none | 32× | **none** |
+| ktab write + read-back | yes | yes (per chunk) | **skipped** |
+| Total wall vs baseline | — | +33 % | **~0 to slightly faster** |
+| Peak scratch (disk) | ~73 GB | ~18.7 GB | **~9 GB (just the seeds)** |
+| Peak RAM | ~19 GB | ~19 GB | ~19 + ~8 GB (two bins) |
+| Correctness | ref | bit-exact | bit-exact |
 
-So the improvement trades a **small storage bump** for **most of Opt C's time penalty back** —
-turning "−74 % space for +33 % time" into roughly "−70 % space for ~free". Numbers above are
-design estimates; validate on the human pair with the `human_stages/` harness.
+The ~9 GB seed-pair temp is the remaining disk floor in every mode; fusing removes essentially
+everything else. Numbers are design estimates — validate on the human pair with the `human_stages/`
+harness.
 
 ---
 
