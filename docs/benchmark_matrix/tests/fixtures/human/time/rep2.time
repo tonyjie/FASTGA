@@ -1,0 +1,23 @@
+	Command being timed: "/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA-baseline/FastGA -v -T32 -P/scratch/jl4257/human_perf/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/docs/benchmark_baseline/human/perf_data/logs/rep2.Llog g1.fna g2.fna"
+	User time (seconds): 3218.92
+	System time (seconds): 613.12
+	Percent of CPU this job got: 618%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 10:19.38
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 19959556
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 104711126
+	Voluntary context switches: 94292
+	Involuntary context switches: 17928
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 179302120
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

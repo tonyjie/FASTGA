@@ -111,7 +111,21 @@ def parse_llog(path):
     out["rss_mb"] = rss_mb; out["n_aln"] = n_aln; out["ave_len"] = ave_len
     return out
 
-import os, glob, statistics as _st, sys
+import os, glob, re, statistics as _st, sys
+
+def peak_rss_mb(time_dir):
+    """Median peak RSS (MB) across all rep*.time files in time_dir (/usr/bin/time -v
+    output). Returns None if time_dir is missing or has no parseable files."""
+    if not time_dir or not os.path.isdir(time_dir):
+        return None
+    kb_vals = []
+    for p in sorted(glob.glob(os.path.join(time_dir, "rep*.time"))):
+        m = re.search(r'Maximum resident set size \(kbytes\):\s*(\d+)', open(p).read())
+        if m:
+            kb_vals.append(int(m.group(1)))
+    if not kb_vals:
+        return None
+    return _st.median(kb_vals) / 1024
 
 def point_median(logs_dir):
     reps = [parse_llog(p) for p in sorted(glob.glob(os.path.join(logs_dir, "rep*.Llog")))]
@@ -120,7 +134,8 @@ def point_median(logs_dir):
     med = {}
     for s in STAGES:
         med[s] = _st.median(r[s] for r in reps)
-    med["rss_mb"] = _st.median(r["rss_mb"] for r in reps)
+    time_dir = os.path.join(os.path.dirname(logs_dir), "time")
+    med["rss_mb"] = peak_rss_mb(time_dir)
     med["n_aln"]  = int(_st.median(r["n_aln"] for r in reps))
     med["ave_len"] = int(_st.median(r["ave_len"] for r in reps))
     med["total"]  = sum(med[s] for s in STAGES)
@@ -136,9 +151,10 @@ def aggregate(base_dir, points):
         f.write("label\trank\t" + "\t".join(STAGES) +
                 "\ttotal_s\tsort_align_share\trss_mb\tn_aln\tave_len\n")
         for label, rank, m in rows:
+            rss_cell = f"{m['rss_mb']:.0f}" if m["rss_mb"] is not None else ""
             f.write(f"{label}\t{rank}\t" + "\t".join(f"{m[s]:.1f}" for s in STAGES) +
                     f"\t{m['total']:.1f}\t{m['Sort+align']/m['total']:.3f}"
-                    f"\t{m['rss_mb']:.0f}\t{m['n_aln']}\t{m['ave_len']}\n")
+                    f"\t{rss_cell}\t{m['n_aln']}\t{m['ave_len']}\n")
     _plot(base_dir, rows)
     return tsv
 
