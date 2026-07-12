@@ -53,14 +53,35 @@ mkdir -p "$SD" "$SCRATCH"
 WT_DDEEA32="${WT_DDEEA32:-$REPO/../FASTGA-fused-wt-ddeea32}"
 WT_OPTC="${WT_OPTC:-$REPO/../FASTGA-fused-wt-optC}"
 
+# For human, every config's FAtoGDB (all ddeea32-descended) segfaults building CHM13's GDB
+# (ANO regression in the 11 commits after 5671357). Build a working 5671357 FAtoGDB once and
+# shadow each config's binary with it (the GDB is binary-independent 2-bit sequence, so this
+# only fixes the crash; it does not affect the GIX/merge/align under test).
+WORKING_FATOGDB=""
+if [ "$DATASET" = "human" ]; then
+  WORKING_FATOGDB="$SCRATCH/FAtoGDB_working"
+  if [ ! -x "$WORKING_FATOGDB" ]; then
+    echo "[$(date +%H:%M:%S)] building working 5671357 FAtoGDB (ddeea32's segfaults on CHM13)"
+    WT57="$REPO/../FASTGA-fused-wt-fatogdb57"
+    git -C "$REPO" worktree remove --force "$WT57" 2>/dev/null; rm -rf "$WT57"
+    git -C "$REPO" worktree add --detach "$WT57" 5671357 >/dev/null 2>&1
+    ( cd "$WT57" && make FAtoGDB >/dev/null 2>&1 )
+    cp "$WT57/FAtoGDB" "$WORKING_FATOGDB"
+    git -C "$REPO" worktree remove --force "$WT57" 2>/dev/null; rm -rf "$WT57"
+  fi
+fi
+install_fatogdb() { [ -n "$WORKING_FATOGDB" ] && cp "$WORKING_FATOGDB" "$1/FAtoGDB"; }
+
 echo "[$(date +%H:%M:%S)] building fused-B (current repo checkout, $(git -C "$REPO" rev-parse --short HEAD))"
 ( cd "$REPO" && make FastGA GIXmake ONEview >/dev/null 2>&1 )
+install_fatogdb "$REPO"
 
 build_worktree() {
   wt=$1; ref=$2
   git -C "$REPO" worktree remove --force "$wt" 2>/dev/null; rm -rf "$wt"
   git -C "$REPO" worktree add --detach "$wt" "$ref" >/dev/null 2>&1
   ( cd "$wt" && make FastGA GIXmake ONEview >/dev/null 2>&1 )
+  install_fatogdb "$wt"
 }
 
 # ---- one monitored run --------------------------------------------------------------------

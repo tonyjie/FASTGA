@@ -1,0 +1,216 @@
+
+  Creating genome data base (GDB) GCF_000001405.40_GRCh38.p14_genomic.1gdb in the current directory
+
+  Masked sequence detected, also creating .ano file GCF_000001405.40_GRCh38.p14_genomic.1ano
+
+  Total Resources:  6.803u  2.868s  9.672w  100.0%  0MB
+
+  Creating genome index (GIX) GCF_000001405.40_GRCh38.p14_genomic.gix in the current directory
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  55.853u  2.658s  2.970w  1969.5%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Sorting part 2      Compressing part 2    Sorting part 3      Compressing part 3    Sorting part 4      Compressing part 4    Sorting part 5      Compressing part 5    Sorting part 6      Compressing part 6    Sorting part 7      Compressing part 7    Sorting part 8      Compressing part 8    Sorting part 9      Compressing part 9    Sorting part 10      Compressing part 10    Sorting part 11      Compressing part 11    Sorting part 12      Compressing part 12    Sorting part 13      Compressing part 13    Sorting part 14      Compressing part 14    Sorting part 15      Compressing part 15    Sorting part 16      Compressing part 16    Sorting part 17      Compressing part 17    Sorting part 18      Compressing part 18    Sorting part 19      Compressing part 19    Sorting part 20      Compressing part 20    Sorting part 21      Compressing part 21    Sorting part 22      Compressing part 22    Sorting part 23      Compressing part 23    Sorting part 24      Compressing part 24    Sorting part 25      Compressing part 25    Sorting part 26      Compressing part 26    Sorting part 27      Compressing part 27    Sorting part 28      Compressing part 28    Sorting part 29      Compressing part 29    Sorting part 30      Compressing part 30    Sorting part 31      Compressing part 31    Sorting part 32      Compressing part 32    Done                                           
+
+  Sampled:    2316875829 ( 73.9%) kmers/positions
+
+  Resources for phase:  4:52.518u  7.294s  24.376w  1229.9%
+
+  Total Resources:  5:48.372u  9.953s  27.347w  1310.3%  2MB
+
+  Creating genome data base (GDB) GCF_009914755.1_T2T-CHM13v2.0_genomic.1gdb in the current directory
+
+  Masked sequence detected, also creating .ano file GCF_009914755.1_T2T-CHM13v2.0_genomic.1ano
+
+  Total Resources:  6.551u  2.960s  9.513w  100.0%  0MB
+
+  Creating genome index (GIX) GCF_009914755.1_T2T-CHM13v2.0_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  50.876u  2.372s  4.155w  1281.4%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Sorting part 2      Compressing part 2    Sorting part 3      Compressing part 3    Sorting part 4      Compressing part 4    Sorting part 5      Compressing part 5    Sorting part 6      Compressing part 6    Sorting part 7      Compressing part 7    Sorting part 8      Compressing part 8    Sorting part 9      Compressing part 9    Sorting part 10      Compressing part 10    Sorting part 11      Compressing part 11    Sorting part 12      Compressing part 12    Sorting part 13      Compressing part 13    Sorting part 14      Compressing part 14    Sorting part 15      Compressing part 15    Sorting part 16      Compressing part 16    Sorting part 17      Compressing part 17    Sorting part 18      Compressing part 18    Sorting part 19      Compressing part 19    Sorting part 20      Compressing part 20    Sorting part 21      Compressing part 21    Sorting part 22      Compressing part 22    Sorting part 23      Compressing part 23    Sorting part 24      Compressing part 24    Sorting part 25      Compressing part 25    Sorting part 26      Compressing part 26    Sorting part 27      Compressing part 27    Sorting part 28      Compressing part 28    Sorting part 29      Compressing part 29    Sorting part 30      Compressing part 30    Sorting part 31      Compressing part 31    Sorting part 32      Compressing part 32    Done                                           
+
+  Sampled:    2305788869 ( 74.0%) kmers/positions
+
+  Resources for phase:  4:41.204u  7.075s  27.479w  1049.1%
+
+  Total Resources:  5:32.081u  9.447s  31.635w  1079.6%  2MB
+
+  Using 32 threads
+
+  Chunk-wise merge: 4 chunks of 32 partitions
+
+  --- Chunk 1/4 (partitions 1-8) ---
+
+  Creating genome index (GIX) GCF_000001405.40_GRCh38.p14_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  57.115u  2.790s  2.955w  2026.7%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Outputing part 1      Sorting part 2      Compressing part 2    Outputing part 2      Sorting part 3      Compressing part 3    Outputing part 3      Sorting part 4      Compressing part 4    Outputing part 4      Sorting part 5      Compressing part 5    Outputing part 5      Sorting part 6      Compressing part 6    Outputing part 6      Sorting part 7      Compressing part 7    Outputing part 7      Sorting part 8      Compressing part 8    Outputing part 8      Done                                           
+
+  Sampled:     579081402 ( 18.5%) kmers/positions
+
+  Resources for phase:  1:13.733u  6.297s  10.600w  755.0%
+
+  Total Resources:  2:10.849u  9.088s  13.556w  1032.2%  2MB
+
+  Creating genome index (GIX) GCF_009914755.1_T2T-CHM13v2.0_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  50.965u  2.283s  4.041w  1317.4%
+
+  Starting sort & index output of each part
+    Sorting part 1      Compressing part 1    Outputing part 1      Sorting part 2      Compressing part 2    Outputing part 2      Sorting part 3      Compressing part 3    Outputing part 3      Sorting part 4      Compressing part 4    Outputing part 4      Sorting part 5      Compressing part 5    Outputing part 5      Sorting part 6      Compressing part 6    Outputing part 6      Sorting part 7      Compressing part 7    Outputing part 7      Sorting part 8      Compressing part 8    Outputing part 8      Done                                           
+
+  Sampled:     577990855 ( 18.5%) kmers/positions
+
+  Resources for phase:  1:11.088u  5.802s  11.062w  695.1%
+
+  Total Resources:  2:02.054u  8.086s  15.104w  861.6%  2MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed  24%    Completed  25%    Completed  27%    Completed  29%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 323861023, ave. len = 39.0, seeds per genome position = 0.1
+
+  --- Chunk 2/4 (partitions 9-16) ---
+
+  Creating genome index (GIX) GCF_000001405.40_GRCh38.p14_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  56.326u  2.540s  2.975w  1978.6%
+
+  Starting sort & index output of each part
+    Sorting part 9      Compressing part 9    Outputing part 1      Sorting part 10      Compressing part 10    Outputing part 2      Sorting part 11      Compressing part 11    Outputing part 3      Sorting part 12      Compressing part 12    Outputing part 4      Sorting part 13      Compressing part 13    Outputing part 5      Sorting part 14      Compressing part 14    Outputing part 6      Sorting part 15      Compressing part 15    Outputing part 7      Sorting part 16      Compressing part 16    Outputing part 8      Done                                           
+
+  Sampled:     578924173 ( 18.5%) kmers/positions
+
+  Resources for phase:  1:14.361u  6.375s  9.736w  829.2%
+
+  Total Resources:  2:10.688u  8.915s  12.712w  1098.2%  2MB
+
+  Creating genome index (GIX) GCF_009914755.1_T2T-CHM13v2.0_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  50.563u  2.464s  4.056w  1307.2%
+
+  Starting sort & index output of each part
+    Sorting part 9      Compressing part 9    Outputing part 1      Sorting part 10      Compressing part 10    Outputing part 2      Sorting part 11      Compressing part 11    Outputing part 3      Sorting part 12      Compressing part 12    Outputing part 4      Sorting part 13      Compressing part 13    Outputing part 5      Sorting part 14      Compressing part 14    Outputing part 6      Sorting part 15      Compressing part 15    Outputing part 7      Sorting part 16      Compressing part 16    Outputing part 8      Done                                           
+
+  Sampled:     578682322 ( 18.6%) kmers/positions
+
+  Resources for phase:  1:11.034u  5.770s  9.967w  770.5%
+
+  Total Resources:  2:01.598u  8.234s  14.024w  925.8%  2MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 324980205, ave. len = 39.0, seeds per genome position = 0.1
+
+  --- Chunk 3/4 (partitions 17-24) ---
+
+  Creating genome index (GIX) GCF_000001405.40_GRCh38.p14_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  59.362u  2.598s  3.115w  1988.5%
+
+  Starting sort & index output of each part
+    Sorting part 17      Compressing part 17    Outputing part 1      Sorting part 18      Compressing part 18    Outputing part 2      Sorting part 19      Compressing part 19    Outputing part 3      Sorting part 20      Compressing part 20    Outputing part 4      Sorting part 21      Compressing part 21    Outputing part 5      Sorting part 22      Compressing part 22    Outputing part 6      Sorting part 23      Compressing part 23    Outputing part 7      Sorting part 24      Compressing part 24    Outputing part 8      Done                                           
+
+  Sampled:     579694022 ( 18.5%) kmers/positions
+
+  Resources for phase:  1:23.566u  6.229s  9.504w  944.8%
+
+  Total Resources:  2:22.929u  8.828s  12.620w  1202.5%  2MB
+
+  Creating genome index (GIX) GCF_009914755.1_T2T-CHM13v2.0_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  53.414u  2.402s  4.281w  1303.8%
+
+  Starting sort & index output of each part
+    Sorting part 17      Compressing part 17    Outputing part 1      Sorting part 18      Compressing part 18    Outputing part 2      Sorting part 19      Compressing part 19    Outputing part 3      Sorting part 20      Compressing part 20    Outputing part 4      Sorting part 21      Compressing part 21    Outputing part 5      Sorting part 22      Compressing part 22    Outputing part 6      Sorting part 23      Compressing part 23    Outputing part 7      Sorting part 24      Compressing part 24    Outputing part 8      Done                                           
+
+  Sampled:     569045158 ( 18.3%) kmers/positions
+
+  Resources for phase:  1:16.933u  5.693s  9.831w  840.5%
+
+  Total Resources:  2:10.348u  8.095s  14.112w  981.0%  2MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  65%    Completed  66%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 326393156, ave. len = 39.1, seeds per genome position = 0.1
+
+  --- Chunk 4/4 (partitions 25-32) ---
+
+  Creating genome index (GIX) GCF_000001405.40_GRCh38.p14_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  59.200u  2.638s  3.145w  1966.3%
+
+  Starting sort & index output of each part
+    Sorting part 25      Compressing part 25    Outputing part 1      Sorting part 26      Compressing part 26    Outputing part 2      Sorting part 27      Compressing part 27    Outputing part 3      Sorting part 28      Compressing part 28    Outputing part 4      Sorting part 29      Compressing part 29    Outputing part 5      Sorting part 30      Compressing part 30    Outputing part 6      Sorting part 31      Compressing part 31    Outputing part 7      Sorting part 32      Compressing part 32    Outputing part 8      Done                                           
+
+  Sampled:     579176232 ( 18.5%) kmers/positions
+
+  Resources for phase:  1:22.058u  6.121s  10.872w  811.0%
+
+  Total Resources:  2:21.259u  8.760s  14.018w  1070.2%  2MB
+
+  Creating genome index (GIX) GCF_009914755.1_T2T-CHM13v2.0_genomic.gix in the current directory
+  -X: inherited NPARTS=32 from ./.GCF_000001405.40_GRCh38.p14_genomic.split
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  53.166u  2.402s  4.278w  1298.9%
+
+  Starting sort & index output of each part
+    Sorting part 25      Compressing part 25    Outputing part 1      Sorting part 26      Compressing part 26    Outputing part 2      Sorting part 27      Compressing part 27    Outputing part 3      Sorting part 28      Compressing part 28    Outputing part 4      Sorting part 29      Compressing part 29    Outputing part 5      Sorting part 30      Compressing part 30    Outputing part 6      Sorting part 31      Compressing part 31    Outputing part 7      Sorting part 32      Compressing part 32    Outputing part 8      Done                                           
+
+  Sampled:     580070534 ( 18.6%) kmers/positions
+
+  Resources for phase:  1:17.814u  5.902s  11.355w  737.2%
+
+  Total Resources:  2:10.981u  8.305s  15.634w  890.9%  2MB
+
+  Starting adaptive seed merge for G1
+    Completed   0%    Completed   1%    Completed   2%    Completed   3%    Completed   4%    Completed   5%    Completed   6%    Completed   7%    Completed   8%    Completed   9%    Completed  10%    Completed  11%    Completed  12%    Completed  13%    Completed  14%    Completed  15%    Completed  16%    Completed  17%    Completed  18%    Completed  19%    Completed  20%    Completed  21%    Completed  22%    Completed  23%    Completed  24%    Completed  25%    Completed  26%    Completed  27%    Completed  28%    Completed  29%    Completed  30%    Completed  31%    Completed  32%    Completed  33%    Completed  34%    Completed  35%    Completed  36%    Completed  37%    Completed  38%    Completed  39%    Completed  40%    Completed  41%    Completed  42%    Completed  43%    Completed  44%    Completed  45%    Completed  46%    Completed  47%    Completed  48%    Completed  49%    Completed  50%    Completed  51%    Completed  52%    Completed  53%    Completed  54%    Completed  55%    Completed  56%    Completed  57%    Completed  58%    Completed  59%    Completed  60%    Completed  61%    Completed  62%    Completed  63%    Completed  64%    Completed  67%    Completed  68%    Completed  69%    Completed  70%    Completed  71%    Completed  72%    Completed  73%    Completed  74%    Completed  75%    Completed  76%    Completed  77%    Completed  78%    Completed  79%    Completed  80%    Completed  81%    Completed  82%    Completed  83%    Completed  84%    Completed  85%    Completed  86%    Completed  87%    Completed  88%    Completed  89%    Completed  90%    Completed  91%    Completed  92%    Completed  93%    Completed  94%    Completed  95%    Completed  96%    Completed  97%    Completed  98%    Completed  99%    Completed 100%
+
+  Total seeds = 323039469, ave. len = 39.1, seeds per genome position = 0.1
+
+  Resources for phase:  3:14.295u  30.656s  2:14.031w  167.8%
+
+  Starting seed sort and alignment search, 66 parts
+    Loading seeds for part 1      Sorting seeds for part 1      Searching seeds for part 1    Loading seeds for part 2      Sorting seeds for part 2      Searching seeds for part 2    Loading seeds for part 3      Sorting seeds for part 3      Searching seeds for part 3    Loading seeds for part 4      Sorting seeds for part 4      Searching seeds for part 4    Loading seeds for part 5      Sorting seeds for part 5      Searching seeds for part 5    Loading seeds for part 6      Sorting seeds for part 6      Searching seeds for part 6    Loading seeds for part 7      Sorting seeds for part 7      Searching seeds for part 7    Loading seeds for part 8      Sorting seeds for part 8      Searching seeds for part 8    Loading seeds for part 9      Sorting seeds for part 9      Searching seeds for part 9    Loading seeds for part 10      Sorting seeds for part 10      Searching seeds for part 10    Loading seeds for part 11      Sorting seeds for part 11      Searching seeds for part 11    Loading seeds for part 12      Sorting seeds for part 12      Searching seeds for part 12    Loading seeds for part 13      Sorting seeds for part 13      Searching seeds for part 13    Loading seeds for part 14      Sorting seeds for part 14      Searching seeds for part 14    Loading seeds for part 15      Sorting seeds for part 15      Searching seeds for part 15    Loading seeds for part 16      Sorting seeds for part 16      Searching seeds for part 16    Loading seeds for part 17      Sorting seeds for part 17      Searching seeds for part 17    Loading seeds for part 18      Sorting seeds for part 18      Searching seeds for part 18    Loading seeds for part 19      Sorting seeds for part 19      Searching seeds for part 19    Loading seeds for part 20      Sorting seeds for part 20      Searching seeds for part 20    Loading seeds for part 21      Sorting seeds for part 21      Searching seeds for part 21    Loading seeds for part 22      Sorting seeds for part 22      Searching seeds for part 22    Loading seeds for part 23      Sorting seeds for part 23      Searching seeds for part 23    Loading seeds for part 24      Sorting seeds for part 24      Searching seeds for part 24    Loading seeds for part 25      Sorting seeds for part 25      Searching seeds for part 25    Loading seeds for part 26      Sorting seeds for part 26      Searching seeds for part 26    Loading seeds for part 27      Sorting seeds for part 27      Searching seeds for part 27    Loading seeds for part 28      Sorting seeds for part 28      Searching seeds for part 28    Loading seeds for part 29      Sorting seeds for part 29      Searching seeds for part 29    Loading seeds for part 30      Sorting seeds for part 30      Searching seeds for part 30    Loading seeds for part 31      Sorting seeds for part 31      Searching seeds for part 31    Loading seeds for part 32      Sorting seeds for part 32      Searching seeds for part 32    Loading seeds for part 33      Sorting seeds for part 33      Searching seeds for part 33    Loading seeds for part 34      Sorting seeds for part 34      Searching seeds for part 34    Loading seeds for part 35      Sorting seeds for part 35      Searching seeds for part 35    Loading seeds for part 36      Sorting seeds for part 36      Searching seeds for part 36    Loading seeds for part 37      Sorting seeds for part 37      Searching seeds for part 37    Loading seeds for part 38      Sorting seeds for part 38      Searching seeds for part 38    Loading seeds for part 39      Sorting seeds for part 39      Searching seeds for part 39    Loading seeds for part 40      Sorting seeds for part 40      Searching seeds for part 40    Loading seeds for part 41      Sorting seeds for part 41      Searching seeds for part 41    Loading seeds for part 42      Sorting seeds for part 42      Searching seeds for part 42    Loading seeds for part 43      Sorting seeds for part 43      Searching seeds for part 43    Loading seeds for part 44      Sorting seeds for part 44      Searching seeds for part 44    Loading seeds for part 45      Sorting seeds for part 45      Searching seeds for part 45    Loading seeds for part 46      Sorting seeds for part 46      Searching seeds for part 46    Loading seeds for part 47      Sorting seeds for part 47      Searching seeds for part 47    Loading seeds for part 48      Sorting seeds for part 48      Searching seeds for part 48    Loading seeds for part 49      Sorting seeds for part 49      Searching seeds for part 49    Loading seeds for part 50      Sorting seeds for part 50      Searching seeds for part 50    Loading seeds for part 51      Sorting seeds for part 51      Searching seeds for part 51    Loading seeds for part 52      Sorting seeds for part 52      Searching seeds for part 52    Loading seeds for part 53      Sorting seeds for part 53      Searching seeds for part 53    Loading seeds for part 54      Sorting seeds for part 54      Searching seeds for part 54    Loading seeds for part 55      Sorting seeds for part 55      Searching seeds for part 55    Loading seeds for part 56      Sorting seeds for part 56      Searching seeds for part 56    Loading seeds for part 57      Sorting seeds for part 57      Searching seeds for part 57    Loading seeds for part 58      Sorting seeds for part 58      Searching seeds for part 58    Loading seeds for part 59      Sorting seeds for part 59      Searching seeds for part 59    Loading seeds for part 60      Sorting seeds for part 60      Searching seeds for part 60    Loading seeds for part 61      Sorting seeds for part 61      Searching seeds for part 61    Loading seeds for part 62      Sorting seeds for part 62      Searching seeds for part 62    Loading seeds for part 63      Sorting seeds for part 63      Searching seeds for part 63    Loading seeds for part 64      Sorting seeds for part 64      Searching seeds for part 64    Loading seeds for part 65      Sorting seeds for part 65      Searching seeds for part 65    Loading seeds for part 66      Sorting seeds for part 66      Searching seeds for part 66    Done                        
+
+  Total hits over 85bp = 843675, 791660 aln's, 518037 non-redundant aln's of ave len 28415
+
+  Sorting and merging alignments
+
+  Resources for phase:  39:40.804u  9:12.205s  8:15.195w  592.3%
+
+  Total Resources:  42:55.099u  9:43.072s  10:29.438w  501.7%  19MB

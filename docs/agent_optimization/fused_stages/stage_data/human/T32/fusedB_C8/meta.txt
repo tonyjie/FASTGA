@@ -1,0 +1,1 @@
+bindir=/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA flags=-C8 loc=tmpfs T=32 G1=/scratch/jl4257/seq_align/fastga_datasets/GRCh38/GCF_000001405.40_GRCh38.p14_genomic.fna G2=/scratch/jl4257/seq_align/fastga_datasets/CHM13/GCF_009914755.1_T2T-CHM13v2.0_genomic.fna
