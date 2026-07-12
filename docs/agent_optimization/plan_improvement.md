@@ -89,8 +89,33 @@ disk and reading it back — simpler, but keeps a small ktab-on-disk footprint.
 | Correctness | ref | bit-exact | bit-exact |
 
 The ~9 GB seed-pair temp is the remaining disk floor in every mode; fusing removes essentially
-everything else. Numbers are design estimates — validate on the human pair with the `human_stages/`
-harness.
+everything else. Numbers above are design estimates for the full in-process fusion (Approach C).
+
+### Measured — Approach B (built & validated)
+
+The **lesser variant** above (scan once, retain pos-lists across a `-R` reuse flag, per-chunk sort
+on tmpfs) was implemented and measured — full results in
+[`fused_stages/`](fused_stages/README.md). It confirms the direction; the full in-process fusion
+(Approach C, no ktab at all) remains projected.
+
+| Human T=32, `-C8` | baseline | Opt C | **fused-B (scan-once + tmpfs)** |
+|---|--:|--:|--:|
+| index+merge | 101 s | 234 s | **164 s** (−70 s vs Opt C) |
+| wall | 607 s | 745 s | **678 s** (−67 s vs Opt C) |
+| real disk peak | 72.6 GB | 19.2 GB | **0 GB** |
+| total RAM (RSS+tmpfs) | 19.1 GB | 19.1 GB | 40.3 GB |
+| correctness | ref | bit-exact | **bit-exact** (518,037 aln) |
+
+What held and what didn't, vs the Approach-C estimates:
+- ✅ **Scan-once works and pays at scale** — `-R` chunk builds skip the scan (partition phase
+  0.2 s → 0.002 s), recovering ~70 s (30 %) of Opt C's re-scan penalty on human. (Negligible on
+  EXAMPLE, where an 86 Mbp scan is ~free.)
+- ✅ **Zero real disk** and **bit-exact**.
+- ⚖️ **Not a footprint reduction below Opt C.** Approach B *relocates* the ~19 GB from disk to tmpfs
+  (RAM), it does not eliminate it — total RAM rises to ~40 GB. Only Approach C (never materialize
+  the ktab) would achieve the "~9 GB, just the seeds" peak projected above.
+- ⚖️ **Residual chunking overhead remains** — fused-B is still +71 s over baseline (per-chunk
+  `k_sort`/process cost, which scan-once doesn't touch), not the "~0 to slightly faster" C target.
 
 ---
 
