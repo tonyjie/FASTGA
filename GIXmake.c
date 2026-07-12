@@ -69,6 +69,10 @@ static int REUSE;        //  -R: reuse persisted pos-lists (+.gcnt) from a prior
 static char *REF_STUB;   //  -X <path>: path to reference .gix stub to inherit NPARTS/Ksplit from
 static int   REF_NPARTS;          //  NPARTS read from reference stub (used when REF_STUB != NULL)
 static int  *REF_KSPLIT;          //  Ksplit read from reference stub (NPARTS+1 entries)
+static char *JOB_TOKEN;  //  -J <token>: opaque token (owning FastGA process's pid) folded into
+                          //  the persisted chunked-scratch names (pos-lists/.gcnt/.split) so
+                          //  concurrent runs sharing -P don't collide on the same genome root.
+                          //  NULL (default) keeps the un-namespaced legacy names.
 
 #define BUFF_MAX   1000000
 #define SCAN_MAX  10000000    //  Must be divisible by 4
@@ -650,16 +654,25 @@ static int read_ksplit_sidecar(char *path, int *nparts_out, int **ksplit_out)
 }
 
 static void write_ksplit_sidecar(char *tpath, char *troot)
-{ char *sname;
-  int   fd;
+{ char  *sname;
+  int    fd;
+  int    nbytes;
 
-  sname = Malloc(strlen(tpath)+strlen(troot)+20,"Allocating sidecar path");
+  sname = Malloc(strlen(tpath)+strlen(troot)+(JOB_TOKEN!=NULL?strlen(JOB_TOKEN):0)+20,
+                 "Allocating sidecar path");
   if (sname == NULL) return;
-  sprintf(sname,"%s/.%s.split",tpath,troot);
+  if (JOB_TOKEN != NULL)
+    sprintf(sname,"%s/.%s.%s.split",tpath,JOB_TOKEN,troot);
+  else
+    sprintf(sname,"%s/.%s.split",tpath,troot);
   fd = open(sname,O_WRONLY|O_CREAT|O_TRUNC,0666);
   if (fd < 0) { free(sname); return; }
-  write(fd,&NPARTS,sizeof(int));
-  write(fd,Ksplit,(NPARTS+1)*sizeof(int));
+  nbytes = (NPARTS+1)*sizeof(int);
+  if (write(fd,&NPARTS,sizeof(int)) != (ssize_t) sizeof(int) ||
+      write(fd,Ksplit,nbytes) != (ssize_t) nbytes)
+    { fprintf(stderr,"%s: Cannot write Ksplit sidecar %s (short/failed write)\n",Prog_Name,sname);
+      close(fd); free(sname); exit (1);
+    }
   close(fd);
   free(sname);
 }
@@ -671,17 +684,26 @@ static void write_ksplit_sidecar(char *tpath, char *troot)
 //  then NTHREADS*NUM_BUCK int64 from the contiguous Buckets[0].
 
 static void write_counts_sidecar(char *tpath, char *troot)
-{ char *sname;
-  int   fd;
+{ char  *sname;
+  int    fd;
+  int64  nbytes;
 
-  sname = Malloc(strlen(tpath)+strlen(troot)+20,"Allocating gcnt path");
+  sname = Malloc(strlen(tpath)+strlen(troot)+(JOB_TOKEN!=NULL?strlen(JOB_TOKEN):0)+20,
+                 "Allocating gcnt path");
   if (sname == NULL) return;
-  sprintf(sname,"%s/.%s.gcnt",tpath,troot);
+  if (JOB_TOKEN != NULL)
+    sprintf(sname,"%s/.%s.%s.gcnt",tpath,JOB_TOKEN,troot);
+  else
+    sprintf(sname,"%s/.%s.gcnt",tpath,troot);
   fd = open(sname,O_WRONLY|O_CREAT|O_TRUNC,0666);
   if (fd < 0) { free(sname); return; }
-  write(fd,&NTHREADS,sizeof(int));
-  write(fd,&NPARTS,sizeof(int));
-  write(fd,Buckets[0],((int64) NTHREADS)*NUM_BUCK*sizeof(int64));
+  nbytes = ((int64) NTHREADS)*NUM_BUCK*sizeof(int64);
+  if (write(fd,&NTHREADS,sizeof(int)) != (ssize_t) sizeof(int) ||
+      write(fd,&NPARTS,sizeof(int)) != (ssize_t) sizeof(int) ||
+      write(fd,Buckets[0],nbytes) != (ssize_t) nbytes)
+    { fprintf(stderr,"%s: Cannot write counts sidecar %s (short/failed write)\n",Prog_Name,sname);
+      close(fd); free(sname); exit (1);
+    }
   close(fd);
   free(sname);
 }
@@ -690,9 +712,13 @@ static int read_counts_sidecar(char *tpath, char *troot)
 { char *sname;
   int   fd, nt, np;
 
-  sname = Malloc(strlen(tpath)+strlen(troot)+20,"Allocating gcnt path");
+  sname = Malloc(strlen(tpath)+strlen(troot)+(JOB_TOKEN!=NULL?strlen(JOB_TOKEN):0)+20,
+                 "Allocating gcnt path");
   if (sname == NULL) return (-1);
-  sprintf(sname,"%s/.%s.gcnt",tpath,troot);
+  if (JOB_TOKEN != NULL)
+    sprintf(sname,"%s/.%s.%s.gcnt",tpath,JOB_TOKEN,troot);
+  else
+    sprintf(sname,"%s/.%s.gcnt",tpath,troot);
   fd = open(sname,O_RDONLY);
   if (fd < 0)
     { fprintf(stderr,"%s: -R cannot open counts sidecar %s\n",Prog_Name,sname);
@@ -1787,6 +1813,7 @@ int main(int argc, char *argv[])
     REF_STUB    = NULL;
     REF_NPARTS  = 0;
     REF_KSPLIT  = NULL;
+    JOB_TOKEN   = NULL;
 
     j = 1;
     for (i = 1; i < argc; i++)
@@ -1830,6 +1857,9 @@ int main(int argc, char *argv[])
             break;
           case 'X':
             REF_STUB = argv[i]+2;
+            break;
+          case 'J':
+            JOB_TOKEN = argv[i]+2;
             break;
         }
       else if (argv[i][0] == '#')
@@ -1966,7 +1996,16 @@ int main(int argc, char *argv[])
   //  Open GDB
 
   if (STUB_ONLY || REUSE)
-    POST_NAME = Strdup(Catenate(SORT_PATH,"/.post.",TROOT,"."),"Allocating post name");
+    { if (JOB_TOKEN != NULL)
+        { POST_NAME = Malloc(strlen(SORT_PATH)+strlen(JOB_TOKEN)+strlen(TROOT)+20,
+                             "Allocating post name");
+          if (POST_NAME == NULL)
+            exit (1);
+          sprintf(POST_NAME,"%s/.post.%s.%s.",SORT_PATH,JOB_TOKEN,TROOT);
+        }
+      else
+        POST_NAME = Strdup(Catenate(SORT_PATH,"/.post.",TROOT,"."),"Allocating post name");
+    }
   else
     POST_NAME = Strdup(Catenate(SORT_PATH,"/.",Numbered_Suffix("post.",getpid(),"."),""),
                        "Allocating post name");

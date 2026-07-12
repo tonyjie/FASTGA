@@ -424,15 +424,19 @@ part_io_error:
 //  Read NPARTS from genome1's Ksplit sidecar (the same file GIXmake reads with -X).
 //  In chunked mode genome2's stub-only .gix can carry a stale nthr, so chunk ranges
 //  must follow the authoritative K-mer partition count from the sidecar — otherwise
-//  only a prefix of partitions is merged.
-static int read_ksplit_nparts(char *path, char *root)
+//  only a prefix of partitions is merged.  "token" is the -J namespace (owning FastGA
+//  pid) the sidecar was written under; pass NULL for the legacy un-namespaced name.
+static int read_ksplit_nparts(char *path, char *root, char *token)
 { char *sname;
   int   fd, nparts;
 
-  sname = Malloc(strlen(path)+strlen(root)+30,"split sidecar path");
+  sname = Malloc(strlen(path)+strlen(root)+(token!=NULL?strlen(token):0)+30,"split sidecar path");
   if (sname == NULL)
     return (-1);
-  sprintf(sname,"%s/.%s.split",path,root);
+  if (token != NULL)
+    sprintf(sname,"%s/.%s.%s.split",path,token,root);
+  else
+    sprintf(sname,"%s/.%s.split",path,root);
   fd = open(sname,O_RDONLY);
   free(sname);
   if (fd < 0)
@@ -4528,6 +4532,11 @@ int main(int argc, char *argv[])
   GDB _gdb2, *gdb2 = &_gdb2;
   char *MF1[argc], *MF2[argc];
   int   NMASK1, NMASK2;
+  char  JOB_TOKEN[32];   //  our pid, as a string: namespaces persisted chunked-scratch
+                         //  (pos-lists/.gcnt/.split) so concurrent runs sharing -P and a
+                         //  genome root don't collide (see GIXmake -J).
+  char  JFLAG[40];       //  " -J<JOB_TOKEN>" when chunked, else "" -- fed straight into the
+                         //  GIXmake command sprintf's below.
 
   //  Process options
 
@@ -4734,6 +4743,18 @@ int main(int argc, char *argv[])
       }
   }
 
+  //  Compute our pid once and fold it into a "-J<pid>" flag for the chunked GIXmake
+  //  sub-calls below, so persisted chunked-scratch (pos-lists/.gcnt/.split) is namespaced
+  //  per FastGA process and concurrent runs sharing -P + a genome root do not collide.
+  //  Only meaningful (and only ever passed) when NCHUNKS > 0; otherwise GIXmake sees no
+  //  -J and keeps today's un-namespaced names.
+
+  sprintf(JOB_TOKEN,"%d",getpid());
+  if (NCHUNKS > 0)
+    sprintf(JFLAG," -J%s",JOB_TOKEN);
+  else
+    JFLAG[0] = '\0';
+
   //  Parse source names and make precursors if necessary
 
   { char *p;
@@ -4860,12 +4881,12 @@ int main(int argc, char *argv[])
           }
 
         if (LOG_FILE)
-          nchar = sprintf(command,"GIXmake%s%s -L:%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+          nchar = sprintf(command,"GIXmake%s%s%s -L:%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",JFLAG,
                           LOG_PATH,NTHREADS,SORT_PATH,tpath1);
         else
-          nchar = sprintf(command,"GIXmake%s%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",
+          nchar = sprintf(command,"GIXmake%s%s%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",JFLAG,
                           NTHREADS,SORT_PATH,tpath1);
         for (k = 0; k < NMASK1; k++)
           nchar += sprintf(command+nchar," #%s",MF1[k]);
@@ -4906,20 +4927,21 @@ int main(int argc, char *argv[])
           }
 
         //  Bilateral chunking: g2 inherits g1's partition boundaries via the
-        //  Ksplit sidecar. g1 was just built with -n above, so the sidecar
-        //  $PATH1/.$ROOT1.split exists and can be passed to g2's GIXmake.
+        //  Ksplit sidecar. g1 was just built with -n above, so the -J-namespaced
+        //  sidecar $PATH1/.$JOB_TOKEN.$ROOT1.split exists and can be passed to g2's
+        //  GIXmake (same JOB_TOKEN both sides -- both builds got the same -J above).
         char xflag[1024];
         xflag[0] = '\0';
         if (NCHUNKS > 0)
-          snprintf(xflag,sizeof(xflag)," -X%s/.%s.split",PATH1,ROOT1);
+          snprintf(xflag,sizeof(xflag)," -X%s/.%s.%s.split",PATH1,JOB_TOKEN,ROOT1);
 
         if (LOG_FILE)
-          nchar = sprintf(command,"GIXmake%s%s%s -L:%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",xflag,
+          nchar = sprintf(command,"GIXmake%s%s%s%s -L:%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",JFLAG,xflag,
                           LOG_PATH,NTHREADS,SORT_PATH,tpath2);
         else
-          nchar = sprintf(command,"GIXmake%s%s%s -T%d -P%s %s",
-                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",xflag,
+          nchar = sprintf(command,"GIXmake%s%s%s%s -T%d -P%s %s",
+                          VERBOSE?" -v":"",NCHUNKS>0?" -n":"",JFLAG,xflag,
                           NTHREADS,SORT_PATH,tpath2);
         for (k = 0; k < NMASK2; k++)
           nchar += sprintf(command+nchar," #%s",MF2[k]);
@@ -5325,7 +5347,7 @@ int main(int argc, char *argv[])
 
         if (!P2->has_lcp) csize2 = -csize2;
 
-        g2_nparts = read_ksplit_nparts(PATH1,ROOT1);
+        g2_nparts = read_ksplit_nparts(PATH1,ROOT1,JOB_TOKEN);
         if (g2_nparts < 1)
           g2_nparts = P2->nthr;
 
@@ -5344,7 +5366,8 @@ int main(int argc, char *argv[])
 
         parts_per_chunk = (g2_nparts + NCHUNKS - 1) / NCHUNKS;
 
-        cmd = Malloc(strlen(PATH2)+strlen(ROOT2)+strlen(SORT_PATH)+
+        cmd = Malloc(strlen(PATH1)+strlen(ROOT1)+strlen(PATH2)+strlen(ROOT2)+
+                     strlen(SORT_PATH)+2*strlen(JOB_TOKEN)+
                      (LOG_PATH?strlen(LOG_PATH):0)+200,"Allocating chunk command");
 
         for (chunk = 0; chunk < NCHUNKS; chunk++)
@@ -5362,13 +5385,13 @@ int main(int argc, char *argv[])
 
             if (LOG_FILE)
               { fclose(LOG_FILE);
-                sprintf(cmd,"GIXmake%s -R -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
-                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,PATH1,ROOT1,
+                sprintf(cmd,"GIXmake%s -R -L:%s -C%d:%d -J%s -X%s/.%s.%s.split -T%d -P%s %s/%s",
+                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,JOB_TOKEN,PATH1,JOB_TOKEN,ROOT1,
                         NTHREADS,SORT_PATH,PATH1,ROOT1);
               }
             else
-              sprintf(cmd,"GIXmake%s -R -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
-                      VERBOSE?" -v":"",cfirst,clast,PATH1,ROOT1,
+              sprintf(cmd,"GIXmake%s -R -C%d:%d -J%s -X%s/.%s.%s.split -T%d -P%s %s/%s",
+                      VERBOSE?" -v":"",cfirst,clast,JOB_TOKEN,PATH1,JOB_TOKEN,ROOT1,
                       NTHREADS,SORT_PATH,PATH1,ROOT1);
             if (system(cmd) != 0)
               { fprintf(stderr,"\n%s: GIXmake g1 chunk %d failed\n",Prog_Name,chunk+1);
@@ -5381,13 +5404,13 @@ int main(int argc, char *argv[])
 
             if (LOG_FILE)
               { fclose(LOG_FILE);
-                sprintf(cmd,"GIXmake%s -R -L:%s -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
-                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,PATH1,ROOT1,
+                sprintf(cmd,"GIXmake%s -R -L:%s -C%d:%d -J%s -X%s/.%s.%s.split -T%d -P%s %s/%s",
+                        VERBOSE?" -v":"",LOG_PATH,cfirst,clast,JOB_TOKEN,PATH1,JOB_TOKEN,ROOT1,
                         NTHREADS,SORT_PATH,PATH2,ROOT2);
               }
             else
-              sprintf(cmd,"GIXmake%s -R -C%d:%d -X%s/.%s.split -T%d -P%s %s/%s",
-                      VERBOSE?" -v":"",cfirst,clast,PATH1,ROOT1,
+              sprintf(cmd,"GIXmake%s -R -C%d:%d -J%s -X%s/.%s.%s.split -T%d -P%s %s/%s",
+                      VERBOSE?" -v":"",cfirst,clast,JOB_TOKEN,PATH1,JOB_TOKEN,ROOT1,
                       NTHREADS,SORT_PATH,PATH2,ROOT2);
             if (system(cmd) != 0)
               { fprintf(stderr,"\n%s: GIXmake g2 chunk %d failed\n",Prog_Name,chunk+1);
@@ -5435,19 +5458,22 @@ int main(int argc, char *argv[])
             }
           }
 
-        //  Scan-once cleanup: the -n scan builds persisted pos-lists (in SORT_PATH) and
-        //  a .gcnt counts sidecar (in each genome's own TPATH, i.e. PATH1/PATH2 -- see
-        //  write_counts_sidecar(TPATH,TROOT) in GIXmake.c) for the -R chunk builds to
-        //  reuse; remove them now.
+        //  Scan-once cleanup: the -n scan builds (both given -J%s above) persisted
+        //  -J-namespaced pos-lists (in SORT_PATH), a .gcnt counts sidecar (in each
+        //  genome's own TPATH, i.e. PATH1/PATH2 -- see write_counts_sidecar(TPATH,TROOT)
+        //  in GIXmake.c), and a .split Ksplit sidecar (also in each genome's TPATH --
+        //  see write_ksplit_sidecar) for the -R chunk builds to reuse; remove them now.
         { int p;
           int glen = strlen(SORT_PATH)+strlen(PATH1)+strlen(PATH2)+
-                     strlen(ROOT1)+strlen(ROOT2)+40;
+                     strlen(ROOT1)+strlen(ROOT2)+strlen(JOB_TOKEN)+40;
           char *gn = Malloc(glen,"cleanup");
           for (p = 0; p < g2_nparts*NTHREADS; p++)
-            { sprintf(gn,"%s/.post.%s.%d.idx",SORT_PATH,ROOT1,p); unlink(gn);
-              sprintf(gn,"%s/.post.%s.%d.idx",SORT_PATH,ROOT2,p); unlink(gn); }
-          sprintf(gn,"%s/.%s.gcnt",PATH1,ROOT1); unlink(gn);
-          sprintf(gn,"%s/.%s.gcnt",PATH2,ROOT2); unlink(gn);
+            { sprintf(gn,"%s/.post.%s.%s.%d.idx",SORT_PATH,JOB_TOKEN,ROOT1,p); unlink(gn);
+              sprintf(gn,"%s/.post.%s.%s.%d.idx",SORT_PATH,JOB_TOKEN,ROOT2,p); unlink(gn); }
+          sprintf(gn,"%s/.%s.%s.gcnt",PATH1,JOB_TOKEN,ROOT1); unlink(gn);
+          sprintf(gn,"%s/.%s.%s.gcnt",PATH2,JOB_TOKEN,ROOT2); unlink(gn);
+          sprintf(gn,"%s/.%s.%s.split",PATH1,JOB_TOKEN,ROOT1); unlink(gn);
+          sprintf(gn,"%s/.%s.%s.split",PATH2,JOB_TOKEN,ROOT2); unlink(gn);
           free(gn);
         }
 
