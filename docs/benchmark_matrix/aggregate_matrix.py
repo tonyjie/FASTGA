@@ -134,6 +134,10 @@ def point_median(logs_dir):
     med = {}
     for s in STAGES:
         med[s] = _st.median(r[s] for r in reps)
+    med["cpu"] = {}
+    for s in STAGES:
+        vals = [r["cpu"][s] for r in reps if r["cpu"][s] is not None]
+        med["cpu"][s] = _st.median(vals) if vals else None
     time_dir = os.path.join(os.path.dirname(logs_dir), "time")
     med["rss_mb"] = peak_rss_mb(time_dir)
     med["n_aln"]  = int(_st.median(r["n_aln"] for r in reps))
@@ -149,12 +153,18 @@ def aggregate(base_dir, points):
     tsv = os.path.join(base_dir, "results.tsv")
     with open(tsv, "w") as f:
         f.write("label\trank\t" + "\t".join(STAGES) +
-                "\ttotal_s\tsort_align_share\trss_mb\tn_aln\tave_len\n")
+                "\ttotal_s\tsort_align_share\trss_mb\tn_aln\tave_len"
+                "\tcpu_GDB\tcpu_GIX\tcpu_seed\tcpu_sortalign\n")
         for label, rank, m in rows:
             rss_cell = f"{m['rss_mb']:.0f}" if m["rss_mb"] is not None else ""
+            cpu_gdb = f"{m['cpu']['GDB']:.1f}" if m["cpu"]["GDB"] is not None else ""
+            cpu_gix = f"{m['cpu']['GIX']:.1f}" if m["cpu"]["GIX"] is not None else ""
+            cpu_seed = f"{m['cpu']['Seed merge']:.1f}" if m["cpu"]["Seed merge"] is not None else ""
+            cpu_sortalign = f"{m['cpu']['Sort+align']:.1f}" if m["cpu"]["Sort+align"] is not None else ""
             f.write(f"{label}\t{rank}\t" + "\t".join(f"{m[s]:.1f}" for s in STAGES) +
                     f"\t{m['total']:.1f}\t{m['Sort+align']/m['total']:.3f}"
-                    f"\t{rss_cell}\t{m['n_aln']}\t{m['ave_len']}\n")
+                    f"\t{rss_cell}\t{m['n_aln']}\t{m['ave_len']}"
+                    f"\t{cpu_gdb}\t{cpu_gix}\t{cpu_seed}\t{cpu_sortalign}\n")
     _plot(base_dir, rows)
     return tsv
 

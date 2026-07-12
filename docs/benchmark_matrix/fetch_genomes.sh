@@ -17,7 +17,8 @@ GENOMES=(
 
 avail=$(df -BG --output=avail "$(dirname "$DEST")" 2>/dev/null | tail -1 | tr -dc '0-9')
 echo "dest=$DEST  free=${avail:-?}GB  (need >= ${MIN_FREE_GB})"
-[ -n "$avail" ] && [ "$avail" -lt "$MIN_FREE_GB" ] && { echo "disk guard: refusing" >&2; exit 3; }
+[ -n "$avail" ] || { echo "disk guard: cannot determine free space for $(dirname "$DEST")" >&2; exit 3; }
+[ "$avail" -lt "$MIN_FREE_GB" ] && { echo "disk guard: refusing" >&2; exit 3; }
 
 for spec in "${GENOMES[@]}"; do
   IFS='|' read -r name gb url <<< "$spec"

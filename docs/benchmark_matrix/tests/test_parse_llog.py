@@ -73,7 +73,13 @@ def test_aggregate_one_point(tmp_path):
     body = open(tsv).read()
     assert "human" in body and "Sort+align" in body
     assert os.path.exists(os.path.join(str(tmp_path / "divergence"), "divergence_phase_share.png"))
+    header = body.splitlines()[0]
+    assert "cpu_sortalign" in header
     line = [ln for ln in body.splitlines() if ln.startswith("human\t")][0]
-    rss_cell = line.split("\t")[-3]  # ...rss_mb, n_aln, ave_len are the last 3 columns
+    cells = line.split("\t")
+    rss_cell = cells[-7]  # ...rss_mb, n_aln, ave_len, cpu_GDB, cpu_GIX, cpu_seed, cpu_sortalign
     assert rss_cell == f"{expected_mb:.0f}"
     assert rss_cell != "19"
+    cpu_sortalign_cell = cells[-1]
+    assert cpu_sortalign_cell != ""
+    assert 400 <= float(cpu_sortalign_cell) <= 800

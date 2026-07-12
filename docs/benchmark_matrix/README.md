@@ -33,6 +33,15 @@ Per-pair peak ≈ 80 GB transient (built, then cleaned each rep); persistent dow
 `sort+align` share falls from ~81% (human, most similar) toward the divergent end as less
 sequence is alignable; GIX/seed shares rise. See the stacked figure.
 
+## Metrics & deviations (v1)
+
+- The figure's x-axis uses **ordinal divergence rank** (human 0 → mouse 4), the spec's
+  documented fallback; a true coverage-fraction proxy is deferred because it is not
+  cheaply/accurately derivable from the FastGA `-L` log (n_aln×ave_len overcounts due to
+  alignment overlap).
+- `results.tsv` includes per-phase wall shares, **per-phase CPU%** (cores utilised), and
+  peak RSS from `/usr/bin/time`; the spec §5 **coverage** column is deferred to a later axis.
+
 ## Results
 
 _(fill in after the runs: paste the `results.tsv` table and the figure.)_
