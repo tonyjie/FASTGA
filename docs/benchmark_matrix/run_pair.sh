@@ -20,6 +20,7 @@ OUT="${OUT:-$HERE/divergence}/$LABEL"
 
 for f in "$G1" "$G2"; do [ -r "$f" ] || { echo "missing genome: $f" >&2; exit 2; }; done
 [ -x "$BL/FastGA" ] || { echo "no FastGA in BL=$BL" >&2; exit 2; }
+export PATH="$BL:$PATH"   # FastGA calls FAtoGDB/GIXmake/ALNtoPAF via system(); they must be on PATH
 
 disk_guard() {  # refuse if free space on $1 < MIN_FREE_GB
   mkdir -p "$1"
