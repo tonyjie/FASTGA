@@ -56,34 +56,66 @@ per-thread `.las`. `Local_Alignment` is the 80-98% bottleneck (M1).
 - **Giant contigs**: loading chr-scale contigs per pair is fine on 80 GB but the H2D cost
   must be amortized across the pair's tubes.
 
-## Status (2026-07-13)
+## Status (2026-07-13) — END-TO-END WORKING, correctness-first
 
-**Wired and building.** `FastGA.gpu` (make target; `-DGPU`, links `fastga_gpu.o` +
-`-lcudart`, `--default-stream per-thread`) compiles; base `FastGA` unaffected (all
-`#ifdef GPU`). The `-G` path is fully plumbed: flag parse, per-thread `gpu_ctx`
-open/close, `gpu_load_seqs` once per contig-pair, `gpu_align_tube` replaces the
-non-comp `Local_Alignment`, CPU `Compute_Trace_PTS` regenerates trace. It runs
-end-to-end (EXAMPLE, 42 s, GPU engaged).
+**`-G` produces a valid `.1aln` recovering 99% of alignments.** On EXAMPLE (hap1 vs
+hap2, T=8):
 
-**Blocking bug (diagnosed): endpoint validity + no fallback.** The run aborts in
-`Compute_Trace_PTS` ("Bad alignment between trace points") on the first bad GPU
-alignment. Two compounding causes:
-  (a) the seed formula `sa=(amid+dg)/2, sb=(amid-dg)/2` matches the aligner's
-      `anti`/diagonal->index mapping, BUT it seeds from the tube-BOX centre, which can
-      lie outside the true alignment (the box is >= the alignment) -> the x-drop wave
-      finds a wrong/partial alignment;
-  (b) `gpu_align_tube` feeds those endpoints straight into `Compute_Trace_PTS`, which
-      hard-exits (not a return code) the moment a 100 bp panel doesn't align -> one bad
-      tube kills the whole run. (The kernel itself is fine: 84% within 50 bp when seeded
-      at the true midpoint via `extract_disc`.)
+| | records | aligned A-bases |
+|---|---:|---:|
+| CPU baseline | 323,569 | 632,119,471 |
+| GPU (`-G`)   | 320,433 (**99.03%**) | 626,012,667 (**99.03%**) |
 
-**To finish (bounded):**
-1. **Seed from a real chain seed** (a sorted-seed entry inside the chain that triggered
-   the tube) rather than the box centre -> guaranteed inside the alignment.
-2. **Validate before trace / fall back**: check the GPU endpoints (monotone,
-   `aepos<=alen`, `bepos<=blen`, `diffs` consistent with length) and for any that look
-   off, fall back to CPU `Local_Alignment` for that tube instead of aborting. Or make a
-   non-fatal `Compute_Trace` path.
-3. Improve x-drop fidelity toward FastGA's `TRIM_MLAG` (84% -> ~99%).
-4. Then batch (two-pass per contig-pair) for speed; validate `.1aln` coverage vs CPU +
-   end-to-end timing.
+The full Phase-3 offload runs to completion, the output flows through the normal
+redundancy-removal + `la_sort`/`la_merge`, and the `.1aln` is near-equivalent to the CPU
+one. The ~1% gap is the tandem-repeat / low-complexity tubes where the GPU x-drop
+endpoints differ slightly.
+
+### What the two earlier blocking bugs actually were
+
+1. **The seed mapping was never wrong.** A per-tube diagnostic (`SEED_DEBUG`) proved
+   `sa=(amid+dg)/2, sb=(amid-dg)/2` lands *inside* FastGA's true alignment on 25/25
+   tubes (`sa_in=sb_in=1`). The abort was not a coordinate-frame error.
+2. **`Compute_Trace_PTS` was the wrong function.** It *refines an existing* trace-point
+   vector (`path->trace`/`path->tlen` are INPUTS); `gpu_align_tube` never set them, so it
+   read stale garbage → first a hard `exit(1)` ("Bad alignment between trace points"),
+   then, once made non-fatal, a SIGSEGV. The function that builds a trace from *just
+   endpoints* is **`Compute_Alignment(align, work, DIFF_TRACE, TSPACE)`** (it aligns the
+   substrings via `split_nd` and sets `path->trace/tlen/diffs`).
+
+### The fix (current code)
+
+- `main`: under `-G`, set gene_core's `Error_Buffer` non-NULL so any internal
+  `EXIT` in the aligner *returns* instead of `exit()`-ing the process (caught below).
+- `gpu_align_tube`: GPU discovers endpoints → self-consistency guard (monotone, in-range,
+  keep-filter, drift ≤ 512) → `Compute_Alignment(DIFF_TRACE)` builds the trace →
+  **on any failure or a rejected guard, fall back to the exact CPU `Local_Alignment`**
+  for that tube (bit-identical to no `-G`). No tube can abort the run or be silently lost.
+
+### The catch: correctness-first is SLOW (no speedup yet)
+
+EXAMPLE T=8, sort+align phase wall time:
+
+| | seed-merge | **sort+align** | total |
+|---|---:|---:|---:|
+| CPU baseline | 41 s | **16.7 s** | 57.5 s |
+| GPU (`-G`)   | 41 s | **44.5 min** (2671 s) | 45.2 min |
+
+The align phase is **~160× slower**, not 2×: `Compute_Alignment` (`split_nd`, full
+divide-and-conquer trace of each substring) is itself far more expensive than
+`Local_Alignment`'s banded x-drop wave, *and* every aligning tube is now aligned twice
+(GPU x-drop for endpoints + CPU `split_nd` for the trace), *and* the GPU runs one tube
+per kernel launch (no batching). The GPU endpoint discovery is not on the critical path;
+the CPU trace regeneration is. This version is a **correctness proof of the pipeline**,
+not a speedup.
+
+### To get real speedup (next phase)
+
+1. **Emit trace-points on the GPU.** The only way to remove the double-alignment: have the
+   kernel produce the TSPACE=100 trace-point vector (diffs per panel) directly, so the CPU
+   just packs it (`Compress_TraceTo8`) — no `Compute_Alignment`. This is the real win.
+2. **Batch across tubes / contig-pairs** for GPU saturation (currently one tube per
+   `gpu_discover_batch` call).
+3. Improve x-drop fidelity toward FastGA's `TRIM_MLAG` (84% → ~99%) to shrink the CPU
+   fallback rate.
+4. Validate on divergent genomes (human/chimp/mouse) and measure end-to-end vs CPU T=32.

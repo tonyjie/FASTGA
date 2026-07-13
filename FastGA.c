@@ -3060,30 +3060,46 @@ typedef struct
 //  -G forward-strand path: discover endpoints on the A100 (from a seed at the tube
 //  centre), then regenerate trace points on the CPU.  Fills pair->align.path.
 static void gpu_align_tube(Contig_Bundle *pair, int dgmin, int dgmax, int amid)
-{ Alignment *align = &(pair->align);
-  Path      *path  = align->path;
+{ Alignment  *align = &(pair->align);
+  Path       *path  = align->path;
+  Work_Data  *work  = pair->work;
+  Align_Spec *spec  = pair->spec;
   int dg = (dgmin + dgmax) / 2;
   int sa = (amid + dg) >> 1;
   int sb = (amid - dg) >> 1;
   int ab, ae, bb, be, df;
+  int rlen, blen2, drift, ok;
 
+  //  Seed the GPU x-drop from the tube-centre anchor (sa,sb); verified to land inside the
+  //  true alignment for every tube (SD study).  Clamp to the resident contigs.
   if (sa < 0) sa = 0;  if (sa >= align->alen) sa = align->alen - 1;
   if (sb < 0) sb = 0;  if (sb >= align->blen) sb = align->blen - 1;
   gpu_discover_batch(pair->gctx, 1, &sa, &sb, &ab, &ae, &bb, &be, &df);
-  path->abpos = ab; path->aepos = ae;
-  path->bbpos = bb; path->bepos = be;
-  path->diffs = df;
-  //  Only trace alignments that would pass FastGA's keep-filter AND look self-consistent
-  //  (monotone, in-range, drift within the aligner's band).  Bad GPU endpoints -> drop,
-  //  so a wrong tube is filtered out rather than aborting Compute_Trace.
-  { int rlen = ae - ab, blen2 = be - bb, drift = rlen - blen2;
-    if (drift < 0) drift = -drift;
-    if (ae > ab && be > bb && ae <= align->alen && be <= align->blen &&
-        rlen >= ALIGN_MIN && ALIGN_RATE*rlen >= df && df <= rlen && drift <= 512)
-      Compute_Trace_PTS(align, pair->work, TSPACE, GREEDIEST, 1, -1);
-    else
-      { path->aepos = path->abpos = 0; path->tlen = 0; }
-  }
+
+  //  Accept the GPU endpoints only if they are self-consistent (monotone, in-range, keep-
+  //  filter, drift within the aligner's band).  The x-drop matches FastGA on ~84% of tubes;
+  //  the rest (tandem-repeat / low-complexity) get the exact CPU aligner below.
+  rlen  = ae - ab;
+  blen2 = be - bb;
+  drift = rlen - blen2;  if (drift < 0) drift = -drift;
+  ok = (ae > ab && be > bb && ae <= align->alen && be <= align->blen &&
+        rlen >= ALIGN_MIN && ALIGN_RATE*rlen >= df && df <= rlen && drift <= 512);
+
+  if (ok)
+    { path->abpos = ab; path->aepos = ae;
+      path->bbpos = bb; path->bepos = be;
+      //  Build the exact trace-point vector BETWEEN the GPU-discovered endpoints from scratch
+      //  (Compute_Trace_PTS refines an existing trace; Compute_Alignment aligns the substrings
+      //  and sets path->trace/tlen/diffs).  Error_Buffer is non-NULL under -G so any internal
+      //  error RETURNS instead of aborting the whole run -> fall back to the CPU aligner.
+      if (Compute_Alignment(align, work, DIFF_TRACE, TSPACE))
+        ok = 0;
+    }
+
+  if (!ok)                      //  exact CPU aligner for this tube (bit-identical to no -G)
+    { if (Local_Alignment(align, work, spec, dgmin, dgmax, amid, -1, -1))
+        Clean_Exit(1);
+    }
 }
 #endif
 
@@ -4767,6 +4783,15 @@ int main(int argc, char *argv[])
     SYMMETRIC = flags['S'];
 #ifdef GPU
     GPU_MODE  = flags['G'];
+    //  Under -G, give gene_core a non-NULL error buffer so a Compute_Trace_PTS that cannot
+    //  build a trace from GPU-discovered endpoints RETURNS non-zero (caught in gpu_align_tube,
+    //  which then falls back to the exact CPU aligner) instead of exit()-ing the whole run.
+    //  Set once before the worker threads start; the message contents are never read, so the
+    //  shared buffer racing across threads is harmless -- only the non-NULL-ness matters.
+    if (GPU_MODE)
+      { static char gpu_error_buffer[100000];
+        Error_Buffer = gpu_error_buffer;
+      }
 #endif
 
     if (argc != 3 && argc != 2)

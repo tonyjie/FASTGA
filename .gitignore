@@ -77,3 +77,6 @@ docs/acceleration/kernel_profile/*.stderr
 
 gpu/fastga_gpu_test
 gpu/fastga_gpu.o
+
+# GPU-accelerated FastGA binary
+FastGA.gpu
