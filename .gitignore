@@ -86,3 +86,5 @@ gpu/trace_validate
 gpu/trace_lib_test
 gpu/trace_bench
 gpu/disc_bench
+gpu/cpu_trace_bench
+FastGA.wave

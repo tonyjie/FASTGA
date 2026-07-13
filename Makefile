@@ -141,3 +141,7 @@ trace_bench: gpu/trace_bench.cu gpu/trace_format.h gpu/fastga_gpu.h gpu/fastga_g
 disc_bench: gpu/disc_bench.cu gpu/disc_format.h gpu/fastga_gpu.h gpu/fastga_gpu.cu
 	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
 	nvcc -O3 -arch=sm_80 -Igpu -o gpu/disc_bench gpu/disc_bench.cu gpu/fastga_gpu.o
+
+# Clean wave-vs-wave CPU baseline: Compute_Alignment at N threads on the same .trace tasks
+cpu_trace_bench: gpu/cpu_trace_bench.c gpu/trace_format.h align.c align.h GDB.c gene_core.c ONElib.c
+	$(CC) $(CFLAGS) -fopenmp -I. -Igpu -o gpu/cpu_trace_bench gpu/cpu_trace_bench.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
