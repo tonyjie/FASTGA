@@ -32,6 +32,14 @@
 static int GPU_MODE = 0;    //  -G : offload forward-strand Local_Alignment to the A100
 #endif
 
+#ifdef WAVE_TIMING
+#include <time.h>
+static double WAVE_TOTAL = 0;   //  sum of per-thread CPU-secs inside Local_Alignment (the wave)
+static pthread_mutex_t WAVE_MTX = PTHREAD_MUTEX_INITIALIZER;
+static inline double _wt_now(void)
+{ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec + t.tv_nsec*1e-9; }
+#endif
+
 #undef    DEBUG_SPLIT
 #undef    DEBUG_MERGE
 #undef    DEBUG_SORT
@@ -3055,6 +3063,9 @@ typedef struct
     int         gpu_loaded;     //  ctg pair currently resident on the GPU
     unsigned short *gpu_tracebuf;  //  scratch for one GPU-emitted trace-point vector
 #endif
+#ifdef WAVE_TIMING
+    double      twave;             //  CPU-secs this thread spent in Local_Alignment
+#endif
   } Contig_Bundle;
 
 #ifdef GPU
@@ -3405,6 +3416,9 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
                                   }
                               }
 
+#ifdef WAVE_TIMING
+                            { double _wt0 = _wt_now();
+#endif
                             if (self)
                               { if (dgmin > 0)
                                   { if (Local_Alignment(align,work,spec,
@@ -3429,6 +3443,9 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
                                 if (Local_Alignment(align,work,spec,dgmin,dgmax,amid,-1,-1))
                                   Clean_Exit(1);
                               }
+#ifdef WAVE_TIMING
+                            pair->twave += _wt_now() - _wt0; }
+#endif
 
                             rlen = path->aepos - path->abpos;
                             if (rlen >= alnMin && alnRate*rlen >= path->diffs)
@@ -3946,6 +3963,9 @@ static void *search_seeds(void *args)
   pair->nlive = 0;
   pair->nlcov = 0;
   pair->nmemo = 0;
+#ifdef WAVE_TIMING
+  pair->twave = 0;
+#endif
 
   x = sarray + range->off;
   for (icrnt = beg; icrnt < end; icrnt++)
@@ -3969,6 +3989,9 @@ static void *search_seeds(void *args)
   if (pair->gpu_tracebuf) free(pair->gpu_tracebuf);
 #endif
   Free_Work_Data(pair->work);
+#ifdef WAVE_TIMING
+  pthread_mutex_lock(&WAVE_MTX); WAVE_TOTAL += pair->twave; pthread_mutex_unlock(&WAVE_MTX);
+#endif
   free(pair->align.aseq-1);
   free(pair->align.bseq-1);
 
@@ -4535,6 +4558,10 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
       search_seeds(tarm);
       for (p = 1; p < nused; p++)
         pthread_join(threads[p],NULL);
+#endif
+#ifdef WAVE_TIMING
+      fprintf(stderr,"  [WAVE_TIMING] Local_Alignment total CPU-secs (sum over threads): %.1f\n",
+                     WAVE_TOTAL);
 #endif
 #ifdef PROFILE_STAGES
       PS_search += ps_now() - _ps_t;

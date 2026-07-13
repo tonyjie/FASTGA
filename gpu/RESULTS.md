@@ -35,6 +35,52 @@ tail where the x-drop endpoints differ; those tubes fall back to the exact CPU a
 
 **Batched GPU wave = 4.7–9.3× the CPU align phase.**
 
+## Representative dataset: HUMAN (GRCh38 × CHM13, ~3.1 Gbp each, T=32) — measured
+
+EXAMPLE is seed-merge-dominated; human is the align-heavy regime. All numbers below are
+**measured** on this branch (instrumented `FastGA.wave` + the GPU benches on real human
+alignments extracted from the 518,037-record `.1aln`).
+
+**Phase breakdown (measured, T=32):**
+| phase | wall | share |
+|---|---:|---:|
+| GDB + GIX build | 107 s | 18% |
+| seed-merge | 11 s | 2% |
+| **sort + align** | **487 s** | **80%** |
+| total | 605 s | 100% |
+
+**Inside sort+align — the wave is NOT the whole phase (this corrects the earlier assumption):**
+Instrumenting every `Local_Alignment` call: **wave = 1490.5 CPU-s = 60.7% of the sort+align
+CPU-time** (2455.9 CPU-s). The other ~39% is the seed radix-sort (billions of seeds) +
+chaining + redundancy + output-merge (14.7 Gbp of trace). Wave wall ≈ 247 s of the 487 s.
+
+**Alignment-length distribution is heavily skewed:** mean 28,415 bp, but ~90% are ≤32 kbp
+(mean ~4 kbp) and ~10% are *very* long (up to hundreds of kbp) — and the long tail dominates
+total work. The GPU trace kernel stores furthest-reaching `x` in `short`, so alignments
+>32 kbp overflow → **CPU fallback exactly on the expensive tail**.
+
+**GPU vs CPU on representative (long) human alignments — same tasks:**
+| | rate |
+|---|---:|
+| GPU trace (≤32 kbp, mean 4 kbp) | 148,823 aln/s |
+| CPU-32 `Compute_Alignment` | 806 aln/s |
+(Compute_Alignment is a slower baseline than FastGA's `Local_Alignment`; the honest wave
+speedup is bounded below by the ~8× measured earlier and is large on the long low-divergence
+alignments the GPU can hold.)
+
+**Honest human end-to-end (Amdahl on the measured wave share):**
+| scenario | end-to-end |
+|---|---:|
+| current kernel (short cap → long tail on CPU) | **~1.3×** |
+| + long-alignment kernel (int `x`, no fallback) | **~1.9× (align-only) / ~1.65× (full run)** |
+
+**Why not 3-5× (correcting my earlier projection):** the wave is only ~49% of the align-only
+runtime (61% of sort+align × ...) — human-human is *low-divergence*, so alignments are long
+and *easy* (shallow waves), which makes the seed-sort + output ~half the phase. GPU-aligner
+acceleration alone is therefore **Amdahl-capped near ~1.9×** on this pair. A bigger win needs
+also accelerating the seed radix-sort and output-merge (a whole-pipeline story), and/or a
+more divergent pair (chimp/mouse) where the wave is a larger share.
+
 ## End-to-end (the honest bottom line)
 | | measured | note |
 |---|---|---|
