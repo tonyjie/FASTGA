@@ -81,3 +81,5 @@ gpu/fastga_gpu.o
 # GPU-accelerated FastGA binary
 FastGA.gpu
 gpu/disc_fidelity
+extract_trace
+gpu/trace_validate
