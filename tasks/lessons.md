@@ -32,6 +32,19 @@ aligner call non-fatal (so you can catch its error and fall back), set the globa
 save/restore pattern). The message contents race across threads but are never read — only
 the non-NULL-ness matters for control flow.
 
+## The GPU speedup is gated by FastGA's sequential tube-walk, not the kernel
+
+The GPU trace kernel is validated (100% valid trace-points) and end-to-end -G produces a
+99%-coverage .1aln. But every -G variant is far SLOWER than CPU because the GPU is launched
+ONE TUBE AT A TIME. The reason it can't be batched trivially: FastGA's tube walk has a
+sequential dependency -- within a chain, each alignment's end anti-diagonal `eant` sets the
+next tube's start (`alow = eant`, FastGA.c ~3494). Tube i+1 needs tube i's result. Only
+first-tubes-of-chains and different contig-pairs are independent. So batching needs a
+`search_seeds` REDESIGN (collect all chains' first tubes across a part -> one big
+discover+trace batch -> iterate continuations), not a local edit. Lesson: before promising a
+GPU speedup for a drop-in, check whether the host loop's granularity is even batchable --
+a sequential data dependency in the caller can make a fast kernel useless.
+
 ## Correctness-first GPU offload ≠ speedup
 
 `-G` with GPU endpoint discovery + CPU `Compute_Alignment` trace recovers 99% of

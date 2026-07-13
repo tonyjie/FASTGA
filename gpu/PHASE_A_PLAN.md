@@ -88,7 +88,41 @@ A-offset to its `abpos mod tspace`) and validates the batched path: EXAMPLE 20k 
   contig-pair; one `gpu_discover_batch` + one `gpu_trace_batch`; pass 2 packs results.
   (Removes the one-tube-per-launch stall.)
 
-### A4 — End-to-end timing + quality
+### A3a — DONE (2026-07-13): correct, but confirms batching is the whole ballgame ✓/✗
+`gpu_align_tube` now emits the trace on the GPU (`gpu_trace_batch`, n=1 per tube) instead of
+CPU `Compute_Alignment`; a per-thread `pair->gpu_tracebuf` holds the vector, `path->trace`
+points at it, `Compress_TraceTo8` packs it. CPU `Local_Alignment` fallback on overflow.
+
+EXAMPLE, T=8:
+
+| version | records | aligned A-bases | sort+align wall |
+|---|---:|---:|---:|
+| CPU baseline            | 323,569 | 632,119,471 | **16.7 s** |
+| −G `Compute_Alignment`  | 320,433 | 626,012,667 | 44.5 min |
+| −G A3a (GPU trace)      | 320,491 (**99.05%**) | 626,798,190 (**99.16%**) | **63 min** |
+
+**Correctness: ✓.** GPU-emitted trace-points produce a valid `.1aln` with 99% of alignments
+and bases — the trace kernel works in the real pipeline, no quality loss.
+
+**Speed: ✗ (as predicted).** A3a is *slower* than the Compute_Alignment version: it does TWO
+per-tube GPU launches (discover n=1 + trace n=1) with per-launch memcpy+sync overhead, and
+the trace kernel stores a multi-MB wave per tube. Un-batched GPU per tube loses to the CPU
+by ~230×. This is not a kernel problem — it is a **launch-granularity** problem.
+
+### The batching blocker (the real finding)
+Batching is blocked by a **sequential data dependency in FastGA's tube walk**: inside a chain,
+each alignment's end anti-diagonal `eant` sets the next tube's start (`alow = eant`, FastGA.c
+~3494). So tubes within a chain cannot be launched together — tube *i+1* needs tube *i*'s
+result. Only the FIRST tube of each chain, and different chains / contig-pairs, are
+independent. Real batching therefore needs a **redesign of `search_seeds`**, not a local edit:
+  1. Collect the first tube of every chain across a whole seed-sort *part* (many contig-pairs).
+  2. `gpu_discover_batch` + `gpu_trace_batch` them all at once (thousands of warps — the
+     regime where A1/A2 are fast and the 16.7× design applies).
+  3. Iterate: chains whose alignment didn't reach `ahgh` re-enter a second batched round
+     (most resolve in one). Preserve the inline redundancy-removal in the write-back pass.
+This is a multi-day restructure and is where the actual end-to-end speedup lives.
+
+### A4 — End-to-end timing + quality (pending the batching redesign)
 - `-G` vs CPU T=32 wall on EXAMPLE (and a larger pair). Target: align phase faster than
   CPU. Report honestly if PCIe/H2D or fallback rate caps the speedup (Amdahl).
 - `.1aln` coverage/identity vs CPU (expect ≥99%, as the correctness-first version).

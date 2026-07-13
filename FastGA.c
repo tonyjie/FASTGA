@@ -3053,6 +3053,7 @@ typedef struct
 #ifdef GPU
     gpu_ctx    *gctx;           //  per-thread GPU alignment context (-G)
     int         gpu_loaded;     //  ctg pair currently resident on the GPU
+    unsigned short *gpu_tracebuf;  //  scratch for one GPU-emitted trace-point vector
 #endif
   } Contig_Bundle;
 
@@ -3086,14 +3087,22 @@ static void gpu_align_tube(Contig_Bundle *pair, int dgmin, int dgmax, int amid)
         rlen >= ALIGN_MIN && ALIGN_RATE*rlen >= df && df <= rlen && drift <= 512);
 
   if (ok)
-    { path->abpos = ab; path->aepos = ae;
-      path->bbpos = bb; path->bepos = be;
-      //  Build the exact trace-point vector BETWEEN the GPU-discovered endpoints from scratch
-      //  (Compute_Trace_PTS refines an existing trace; Compute_Alignment aligns the substrings
-      //  and sets path->trace/tlen/diffs).  Error_Buffer is non-NULL under -G so any internal
-      //  error RETURNS instead of aborting the whole run -> fall back to the CPU aligner.
-      if (Compute_Alignment(align, work, DIFF_TRACE, TSPACE))
+    { int tl = -1;
+      //  Emit the trace-point vector on the GPU (A2 gpu_trace_batch): one warp aligns the
+      //  rectangle [ab,ae]x[bb,be] within the resident contigs and returns (diff,delta-b)
+      //  panel pairs -- no CPU re-alignment.  Overflow / kernel error -> tl<0 -> CPU fallback.
+      if (gpu_trace_batch(pair->gctx, 1, &ab, &ae, &bb, &be, TSPACE,
+                          pair->gpu_tracebuf, &tl) || tl < 0)
         ok = 0;
+      else
+        { int p, d = 0;
+          for (p = 0; p < tl; p += 2) d += pair->gpu_tracebuf[p];   //  Sigma diffs
+          path->abpos = ab; path->aepos = ae;
+          path->bbpos = bb; path->bepos = be;
+          path->diffs = d;
+          path->trace = (int *) pair->gpu_tracebuf;   //  uint16 pairs; Compress_TraceTo8 reads it
+          path->tlen  = tl;
+        }
     }
 
   if (!ok)                      //  exact CPU aligner for this tube (bit-identical to no -G)
@@ -3920,7 +3929,13 @@ static void *search_seeds(void *args)
   pair->spec = New_Align_Spec(1.-ALIGN_RATE,100,gdb1->freq,0);
 #ifdef GPU
   pair->gctx = NULL;
-  if (GPU_MODE) pair->gctx = gpu_open();
+  pair->gpu_tracebuf = NULL;
+  if (GPU_MODE)
+    { pair->gctx = gpu_open();
+      pair->gpu_tracebuf = (unsigned short *) Malloc(FGA_TRACE_MAX_PAIRS*sizeof(unsigned short),
+                                                     "GPU trace buffer");
+      if (pair->gpu_tracebuf == NULL) Clean_Exit(1);
+    }
 #endif
   if (pair->work == NULL || pair->spec == NULL)
     Clean_Exit(1);
@@ -3951,6 +3966,7 @@ static void *search_seeds(void *args)
   Free_Align_Spec(pair->spec);
 #ifdef GPU
   if (GPU_MODE && pair->gctx) gpu_close(pair->gctx);
+  if (pair->gpu_tracebuf) free(pair->gpu_tracebuf);
 #endif
   Free_Work_Data(pair->work);
   free(pair->align.aseq-1);
