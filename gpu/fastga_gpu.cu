@@ -135,6 +135,63 @@ __global__ void trace_batch(const u8*A,const u8*B,int n,
   Otlen[warp]=2*npanel;
 }
 
+// ---- warp-parallel discovery (A3b): one warp per task, x-drop band across 32 lanes.
+//      Same furthest-reaching wave + score=matches-2*diffs x-drop as extend(), but the band
+//      is swept by the warp and the per-d best score is a warp argmax-reduction. ----
+__device__ static void extend_warp(const u8*A,int a0,int da,int alen,const u8*B,int b0,int db,int blen,
+                                   short*f,short*M,int lane,int*ox,int*oy,int*od){
+  short *fp=f, *fc=f+DW, *Mp=M, *Mc=M+DW;
+  for(int i=lane;i<DW;i+=32){fp[i]=-1;Mp[i]=0;fc[i]=-1;Mc[i]=0;}
+  __syncwarp();
+  int x0=0,mm0=0;
+  if(lane==0){int x=0,mm=0;while(x<alen&&x<blen&&A[a0+da*x]==B[b0+db*x]){x++;mm++;}
+              fp[KB]=(short)x;Mp[KB]=(short)mm;x0=x;mm0=mm;}
+  __syncwarp();
+  int bestS=__shfl_sync(0xffffffff,mm0,0);
+  int bx=__shfl_sync(0xffffffff,x0,0), by=bx, bd=0, stop=0;
+  for(int d=1;d<=MAXD && !stop;d++){
+    for(int i=lane;i<DW;i+=32) fc[i]=-1;
+    __syncwarp();
+    int kmin=-KB>-d?-KB:-d, kmax=KB<d?KB:d;
+    int locS=-1000000,lcx=0,lcy=0;
+    for(int k=kmin+lane;k<=kmax;k+=32){
+      int idx=k+KB,best=-1,bm=0,v;
+      if(k-1>=-KB){v=fp[idx-1];if(v>=0&&v+1>best){best=v+1;bm=Mp[idx-1];}}
+      if(k+1<=KB){v=fp[idx+1];if(v>=0&&v  >best){best=v;  bm=Mp[idx+1];}}
+      v=fp[idx];if(v>=0&&v+1>best){best=v+1;bm=Mp[idx];}
+      if(best<0)continue;
+      int xx=best;if(xx>alen)xx=alen;if(xx-k>blen)xx=blen+k;if(xx<0)xx=0;int yy=xx-k;
+      while(xx<alen&&yy<blen&&A[a0+da*xx]==B[b0+db*yy]){xx++;yy++;bm++;}
+      fc[idx]=(short)xx;Mc[idx]=(short)bm;
+      int S=bm-2*d; if(S>locS){locS=S;lcx=xx;lcy=yy;}
+    }
+    __syncwarp();
+    int mS=locS,mx=lcx,my=lcy;               // warp argmax of the per-d best score
+    for(int o=16;o>=1;o>>=1){
+      int oS=__shfl_down_sync(0xffffffff,mS,o),oX=__shfl_down_sync(0xffffffff,mx,o),oY=__shfl_down_sync(0xffffffff,my,o);
+      if(oS>mS){mS=oS;mx=oX;my=oY;}
+    }
+    int curbestS=__shfl_sync(0xffffffff,mS,0);
+    int cx=__shfl_sync(0xffffffff,mx,0), cy=__shfl_sync(0xffffffff,my,0);
+    if(lane==0 && curbestS>bestS){bestS=curbestS;bx=cx;by=cy;bd=d;}
+    bestS=__shfl_sync(0xffffffff,bestS,0);
+    if(curbestS<bestS-40) stop=1;
+    short*t; t=fp;fp=fc;fc=t; t=Mp;Mp=Mc;Mc=t;
+  }
+  if(lane==0){*ox=bx;*oy=by;*od=bd;}
+}
+__global__ void disc_batch_warp(const u8*A,int alen,const u8*B,int blen,int n,
+                                const int*sa,const int*sb,int*ab,int*ae,int*bb,int*be,int*df){
+  extern __shared__ short sh[];
+  int warp=(blockIdx.x*blockDim.x+threadIdx.x)>>5, lane=threadIdx.x&31, wib=threadIdx.x>>5;
+  if(warp>=n)return;
+  short*f=sh+(size_t)wib*(4*DW); short*M=f+2*DW;
+  int SA=sa[warp],SB=sb[warp],fx,fy,fd,rx,ry,rd;
+  extend_warp(A,SA,  +1,alen-SA,B,SB,  +1,blen-SB,f,M,lane,&fx,&fy,&fd);
+  extend_warp(A,SA-1,-1,SA,     B,SB-1,-1,SB,     f,M,lane,&rx,&ry,&rd);
+  if(lane==0){ae[warp]=SA+fx;be[warp]=SB+fy;ab[warp]=SA-rx;bb[warp]=SB-ry;df[warp]=fd+rd;}
+}
+
 struct gpu_ctx { u8 *dA,*dB; int alen,blen; size_t acap,bcap;
                  int *dsa,*dsb,*dab,*dae,*dbb,*dbe,*ddf; int ncap;
                  // trace-emission scratch/buffers
@@ -171,8 +228,9 @@ extern "C" int gpu_discover_batch(gpu_ctx*g,int n,const int*sa,const int*sb,
   ensure_n(g,n);
   CK(cudaMemcpy(g->dsa,sa,n*4,cudaMemcpyHostToDevice));
   CK(cudaMemcpy(g->dsb,sb,n*4,cudaMemcpyHostToDevice));
-  int TPB=64,bl=(n+TPB-1)/TPB;
-  disc_batch<<<bl,TPB>>>(g->dA,g->alen,g->dB,g->blen,n,g->dsa,g->dsb,g->dab,g->dae,g->dbb,g->dbe,g->ddf);
+  int TPB=128, wpb=TPB/32, bl=(n+wpb-1)/wpb;
+  size_t shmem=(size_t)wpb*4*DW*sizeof(short);
+  disc_batch_warp<<<bl,TPB,shmem>>>(g->dA,g->alen,g->dB,g->blen,n,g->dsa,g->dsb,g->dab,g->dae,g->dbb,g->dbe,g->ddf);
   if(cudaGetLastError()!=cudaSuccess||cudaDeviceSynchronize()!=cudaSuccess) return 1;
   CK(cudaMemcpy(ab,g->dab,n*4,cudaMemcpyDeviceToHost));CK(cudaMemcpy(ae,g->dae,n*4,cudaMemcpyDeviceToHost));
   CK(cudaMemcpy(bb,g->dbb,n*4,cudaMemcpyDeviceToHost));CK(cudaMemcpy(be,g->dbe,n*4,cudaMemcpyDeviceToHost));

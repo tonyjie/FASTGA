@@ -21,12 +21,25 @@ with the number of resident warps, which the per-warp wave scratch (4 MB) caps. 
 80 GB easily holds 8192 warps (32 GB) alongside the ~1.2 GB resident contigs. Trace is **not
 the bottleneck** — the earlier A3a slowness was pure per-tube launch granularity.
 
-## Discovery kernel (1 thread per task) — the current bottleneck
+## Discovery kernel — warp-parallelized (DONE, measured)
 
-100,000 discoveries in 5.58 s = **17,918 disc/s** — about the CPU align rate. This kernel is
-*not* warp-parallel (`disc_batch` runs one thread per task, serial x-drop). Warp-parallelizing
-it with the same band-across-lanes pattern the trace kernel already uses is a **bounded**
-change and should give a similar ~10–20× → ~200–350k disc/s.
+Originally 1-thread-per-task: 17,918 disc/s. Warp-parallelized (`extend_warp` / `disc_batch_warp`,
+band across 32 lanes, per-d best a warp argmax-reduction — same pattern as the trace kernel):
+**443,341 disc/s** (0.73 s for 322 k), a **24.7×** kernel speedup, and endpoint fidelity is
+**identical** (83.8% within 50 bp, same as the serial kernel — the warp version is exact).
+
+## Combined GPU wave (both kernels, measured) vs CPU align phase
+
+| | time for all 322,531 alns | vs CPU align 16.7 s (T=8) |
+|---|---:|---:|
+| discovery (warp)         | 0.73 s | — |
+| trace (8 GB scratch)     | 2.82 s | — |
+| trace (32 GB scratch)    | 1.06 s | — |
+| **wave = disc + trace (8 GB)**  | **3.55 s** | **4.7×** |
+| **wave = disc + trace (32 GB)** | **1.79 s** | **9.3×** |
+
+Both kernels now clear the bar decisively. What remains for a real end-to-end speedup is the
+coroutine batching orchestration (gpu/A3b_design.md) to feed them — plus its overhead.
 
 ## Verdict
 
