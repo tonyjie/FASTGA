@@ -109,6 +109,35 @@ per kernel launch (no batching). The GPU endpoint discovery is not on the critic
 the CPU trace regeneration is. This version is a **correctness proof of the pipeline**,
 not a speedup.
 
+## Validation B: GPU discovery fidelity vs divergence (2026-07-13)
+
+`gpu/disc_fidelity.c` (`make disc_fidelity`) replays real FastGA discovery tasks
+(`extract_disc`) through the GPU x-drop and buckets the endpoint agreement by **per-task
+local divergence** (`ref_diffs / ref-A-length`) — turning one dataset into a
+fidelity-vs-divergence curve. EXAMPLE, 20,000 tasks:
+
+| local divergence | tasks | ≤50 bp | ≤10 bp |
+|---|---:|---:|---:|
+| 0–1%   |    123 | **100.0%** | 93.5% |
+| 1–2%   |    264 | **100.0%** | 94.7% |
+| 2–5%   |  1,528 | **97.4%**  | 89.4% |
+| 5–10%  |  5,380 | **95.1%**  | 80.4% |
+| 10–20% | 10,761 | 81.4%      | 64.5% |
+| >20%   |  1,944 | 52.5%      | 36.5% |
+| **ALL**| 20,000 | **83.8%**  | 68.5% |
+
+**Reading:** the GPU x-drop is near-exact (≥95% within 50 bp) up to ~10% local
+divergence — i.e. on genuine homology, where FastGA alignments actually live — and only
+falls off in the high-divergence tail (tandem-repeat / low-complexity / spurious tubes).
+That tail is precisely where `gpu_align_tube`'s guard rejects the GPU endpoints and the
+exact CPU `Local_Alignment` takes over, which is why the end-to-end `.1aln` keeps 99% of
+alignments/bases despite the 83.8% overall endpoint match. The bucketing is a proxy:
+divergence here is driven by within-dataset repeats rather than cross-species orthology,
+but the x-drop responds to edit rate regardless of provenance, so the *relationship*
+(fidelity vs divergence) transfers. A true high-divergence genome (e.g. mouse ~15%) would
+populate the tail with orthology instead of repeats; measuring it needs a GIX build
+(deferred — not part of the fast proxy).
+
 ### To get real speedup (next phase)
 
 1. **Emit trace-points on the GPU.** The only way to remove the double-alignment: have the

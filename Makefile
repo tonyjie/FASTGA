@@ -67,6 +67,11 @@ extract_tasks: gpu/extract_tasks.c gpu/task_format.h align.h align.c GDB.c GDB.h
 extract_disc: gpu/extract_disc.c gpu/disc_format.h align.h align.c GDB.c GDB.h alncode.c alncode.h ONElib.c ONElib.h
 	$(CC) $(CFLAGS) -I. -o extract_disc gpu/extract_disc.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
 
+# GPU discovery fidelity vs local divergence (validation B): reads a .disc, buckets by ref_diffs/len
+disc_fidelity: gpu/disc_fidelity.c gpu/disc_format.h gpu/fastga_gpu.h gpu/fastga_gpu.cu
+	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
+	$(CC) $(CFLAGS) -I. -Igpu -o gpu/disc_fidelity gpu/disc_fidelity.c gpu/fastga_gpu.o -L/usr/local/cuda/lib64 -lcudart -lstdc++
+
 ALNreset: ALNreset.c GDB.c GDB.h ONElib.c ONElib.h alncode.c alncode.h
 	$(CC) $(CFLAGS) -o ALNreset ALNreset.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
 
