@@ -74,3 +74,6 @@ gpu/gpu_align
 gpu/gpu_discover
 gpu/*.o
 docs/acceleration/kernel_profile/*.stderr
+
+gpu/fastga_gpu_test
+gpu/fastga_gpu.o
