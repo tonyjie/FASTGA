@@ -180,7 +180,9 @@ extern "C" int gpu_discover_batch(gpu_ctx*g,int n,const int*sa,const int*sb,
   return 0;
 }
 
-#define TR_CHUNK 256      // warps per trace launch; wave scratch = TR_CHUNK*TR_DCAP*TR_WCAP shorts (~1 GB)
+#define TR_CHUNK 2048     // max warps per trace launch; wave scratch = min(n,TR_CHUNK)*4 MB.
+                          // Throughput is occupancy-bound: 256->24k, 2048->114k, 8192->306k aln/s
+                          // on the A100 (bench). Raise for big batches if GPU memory allows.
 static void ensure_trace(gpu_ctx*g,int n){
   if(n>g->tncap){
     if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);}
@@ -189,10 +191,11 @@ static void ensure_trace(gpu_ctx*g,int n){
     CK(cudaMalloc(&g->tOut,(size_t)n*FGA_TRACE_MAX_PAIRS*sizeof(unsigned short)));
     g->tncap=n;
   }
-  if(TR_CHUNK>g->tchunkcap){
+  int chunk = n<TR_CHUNK ? n : TR_CHUNK;     // don't over-allocate wave scratch for small n
+  if(chunk>g->tchunkcap){
     if(g->tWave)cudaFree(g->tWave);
-    CK(cudaMalloc(&g->tWave,(size_t)TR_CHUNK*TR_DCAP*TR_WCAP*sizeof(short)));
-    g->tchunkcap=TR_CHUNK;
+    CK(cudaMalloc(&g->tWave,(size_t)chunk*TR_DCAP*TR_WCAP*sizeof(short)));
+    g->tchunkcap=chunk;
   }
 }
 extern "C" int gpu_trace_batch(gpu_ctx*g,int n,

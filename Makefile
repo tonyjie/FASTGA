@@ -131,3 +131,13 @@ deploy:
 trace_lib_test: gpu/trace_lib_test.cu gpu/trace_format.h gpu/fastga_gpu.h gpu/fastga_gpu.cu
 	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
 	nvcc -O3 -arch=sm_80 -Igpu -o gpu/trace_lib_test gpu/trace_lib_test.cu gpu/fastga_gpu.o
+
+# A3b feasibility: time batched gpu_trace_batch over all alignments of a part
+trace_bench: gpu/trace_bench.cu gpu/trace_format.h gpu/fastga_gpu.h gpu/fastga_gpu.cu
+	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
+	nvcc -O3 -arch=sm_80 -Igpu -o gpu/trace_bench gpu/trace_bench.cu gpu/fastga_gpu.o
+
+# A3b feasibility: time batched gpu_discover_batch over all discovery tasks of a part
+disc_bench: gpu/disc_bench.cu gpu/disc_format.h gpu/fastga_gpu.h gpu/fastga_gpu.cu
+	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
+	nvcc -O3 -arch=sm_80 -Igpu -o gpu/disc_bench gpu/disc_bench.cu gpu/fastga_gpu.o

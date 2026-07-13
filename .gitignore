@@ -84,3 +84,5 @@ gpu/disc_fidelity
 extract_trace
 gpu/trace_validate
 gpu/trace_lib_test
+gpu/trace_bench
+gpu/disc_bench
