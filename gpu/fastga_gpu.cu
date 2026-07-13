@@ -57,8 +57,89 @@ __global__ void disc_batch(const u8*A,int alen,const u8*B,int blen,int n,
   ae[i]=SA+fx; be[i]=SB+fy; ab[i]=SA-rx; bb[i]=SB-ry; df[i]=fd+rd;
 }
 
+// ---- trace-point emission (A2): one warp per alignment, banded wave (store all d) +
+//      lane-0 traceback binning (diff, delta-b) into global-tspace-phased panels.
+//      Validated offline by gpu/trace_validate.cu: 100% Check_Trace_Points-valid, exact
+//      edit distance vs FastGA. ----
+#define TR_KBAND 384
+#define TR_WCAP  1024        // max band width; wider -> overflow (-1)
+#define TR_DCAP  2048        // max diffs stored; deeper -> overflow (-2)
+#define TR_PCAP  256         // max panels/alignment in the output slot; more -> overflow (-3)
+
+__global__ void trace_batch(const u8*A,const u8*B,int n,
+                            const int*abA,const int*aeA,const int*bbA,const int*beA,
+                            int tspace, short*Wave, unsigned short*Out, int*Otlen, int max_pairs){
+  int warp = (blockIdx.x*blockDim.x + threadIdx.x) >> 5;
+  int lane = threadIdx.x & 31;
+  if (warp >= n) return;
+  int abpos=abA[warp], aepos=aeA[warp], bbpos=bbA[warp], bepos=beA[warp];
+  const u8*a = A + abpos; int aw = aepos-abpos;
+  const u8*b = B + bbpos; int bw = bepos-bbpos;
+  int drift = aw-bw;
+  int klo=(drift<0?drift:0)-TR_KBAND, khi=(drift>0?drift:0)+TR_KBAND;
+  int width = khi-klo+1;
+  short *F = Wave + (size_t)warp*TR_DCAP*TR_WCAP;
+  if (width>TR_WCAP){ if(lane==0)Otlen[warp]=-1; return; }
+
+  for (int i=lane;i<width;i+=32) F[i]=-1;
+  __syncwarp();
+  if (lane==0){ int x=0; while(x<aw&&x<bw&&a[x]==b[x])x++; F[0-klo]=(short)x; }
+  __syncwarp();
+  int result=-1;
+  if (drift==0 && F[0-klo]>=aw) result=0;
+  for (int d=1; d<=TR_DCAP-1 && result<0; d++){
+    short *fp=F+(size_t)(d-1)*TR_WCAP, *fc=F+(size_t)d*TR_WCAP;
+    for (int i=lane;i<width;i+=32) fc[i]=-1;
+    __syncwarp();
+    int kmin=klo>-d?klo:-d, kmax=khi<d?khi:d;
+    for (int k=kmin+lane;k<=kmax;k+=32){
+      int idx=k-klo,best=-1,v;
+      if(k-1>=klo){v=fp[idx-1];if(v>=0&&v+1>best)best=v+1;}
+      if(k+1<=khi){v=fp[idx+1];if(v>=0&&v  >best)best=v;}
+      v=fp[idx];if(v>=0&&v+1>best)best=v+1;
+      if(best>=0){int x=best;if(x>aw)x=aw;if(x-k>bw)x=bw+k;if(x<0)x=0;int y=x-k;
+        while(x<aw&&y<bw&&a[x]==b[y]){x++;y++;} fc[idx]=(short)x;}
+    }
+    __syncwarp();
+    int xe=fc[drift-klo];
+    if(xe>=aw&&xe-drift>=bw) result=d;
+  }
+  if (lane!=0) return;
+  if (result<0){ Otlen[warp]=-2; return; }
+
+  int p0=abpos/tspace;
+  int npanel=(aepos-1)/tspace - p0 + 1;
+  if (npanel>TR_PCAP || 2*npanel>max_pairs){ Otlen[warp]=-3; return; }
+  unsigned short *o = Out + (size_t)warp*max_pairs;
+  for (int p=0;p<2*npanel;p++) o[p]=0;
+  #define TR_DBIN(al) o[2*(((abpos+(al))/tspace)-p0)]
+  #define TR_BBIN(al) o[2*(((abpos+(al))/tspace)-p0)+1]
+  int d=result, k=drift;
+  int x=(int)F[(size_t)d*TR_WCAP+(k-klo)];
+  while (d>0){
+    short *fp=F+(size_t)(d-1)*TR_WCAP;
+    int best=-1,op=0,xpred=-1,v;
+    v=fp[k-klo];  if(v>=0&&v+1>best){best=v+1;op=2;xpred=v;}                  // sub
+    if(k-1>=klo){v=fp[(k-1)-klo];if(v>=0&&v+1>best){best=v+1;op=0;xpred=v;}}  // del
+    if(k+1<=khi){v=fp[(k+1)-klo];if(v>=0&&v  >best){best=v;  op=1;xpred=v;}}  // ins
+    int x0=best;
+    for (int al=x0; al<x; al++) TR_BBIN(al) += 1;      // match slide: 1 B each
+    if (op==0){ TR_DBIN(xpred)+=1; }                   // del: +1 diff, 0 B
+    else      { TR_DBIN(xpred)+=1; TR_BBIN(xpred)+=1; }// sub/ins: +1 diff, +1 B
+    if (op==0) k=k-1; else if (op==1) k=k+1;
+    x=xpred; d=d-1;
+  }
+  for (int al=0; al<x; al++) TR_BBIN(al) += 1;         // d=0 slide from (0,0)
+  #undef TR_DBIN
+  #undef TR_BBIN
+  Otlen[warp]=2*npanel;
+}
+
 struct gpu_ctx { u8 *dA,*dB; int alen,blen; size_t acap,bcap;
-                 int *dsa,*dsb,*dab,*dae,*dbb,*dbe,*ddf; int ncap; };
+                 int *dsa,*dsb,*dab,*dae,*dbb,*dbe,*ddf; int ncap;
+                 // trace-emission scratch/buffers
+                 int *tab,*tae,*tbb,*tbe,*tOtlen; short *tWave; unsigned short *tOut;
+                 int tncap, tchunkcap; };
 
 extern "C" gpu_ctx *gpu_open(void){
   gpu_ctx *g=(gpu_ctx*)calloc(1,sizeof(gpu_ctx)); return g;
@@ -67,6 +148,8 @@ extern "C" void gpu_close(gpu_ctx *g){
   if(!g)return;
   if(g->dA)cudaFree(g->dA); if(g->dB)cudaFree(g->dB);
   if(g->dsa){cudaFree(g->dsa);cudaFree(g->dsb);cudaFree(g->dab);cudaFree(g->dae);cudaFree(g->dbb);cudaFree(g->dbe);cudaFree(g->ddf);}
+  if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);}
+  if(g->tWave)cudaFree(g->tWave);
   free(g);
 }
 extern "C" void gpu_load_seqs(gpu_ctx *g,const u8*A,int alen,const u8*B,int blen){
@@ -94,6 +177,41 @@ extern "C" int gpu_discover_batch(gpu_ctx*g,int n,const int*sa,const int*sb,
   CK(cudaMemcpy(ab,g->dab,n*4,cudaMemcpyDeviceToHost));CK(cudaMemcpy(ae,g->dae,n*4,cudaMemcpyDeviceToHost));
   CK(cudaMemcpy(bb,g->dbb,n*4,cudaMemcpyDeviceToHost));CK(cudaMemcpy(be,g->dbe,n*4,cudaMemcpyDeviceToHost));
   CK(cudaMemcpy(diffs,g->ddf,n*4,cudaMemcpyDeviceToHost));
+  return 0;
+}
+
+#define TR_CHUNK 256      // warps per trace launch; wave scratch = TR_CHUNK*TR_DCAP*TR_WCAP shorts (~1 GB)
+static void ensure_trace(gpu_ctx*g,int n){
+  if(n>g->tncap){
+    if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);}
+    CK(cudaMalloc(&g->tab,n*4));CK(cudaMalloc(&g->tae,n*4));CK(cudaMalloc(&g->tbb,n*4));CK(cudaMalloc(&g->tbe,n*4));
+    CK(cudaMalloc(&g->tOtlen,n*4));
+    CK(cudaMalloc(&g->tOut,(size_t)n*FGA_TRACE_MAX_PAIRS*sizeof(unsigned short)));
+    g->tncap=n;
+  }
+  if(TR_CHUNK>g->tchunkcap){
+    if(g->tWave)cudaFree(g->tWave);
+    CK(cudaMalloc(&g->tWave,(size_t)TR_CHUNK*TR_DCAP*TR_WCAP*sizeof(short)));
+    g->tchunkcap=TR_CHUNK;
+  }
+}
+extern "C" int gpu_trace_batch(gpu_ctx*g,int n,
+        const int*ab,const int*ae,const int*bb,const int*be,int tspace,
+        unsigned short*out_trace,int*out_tlen){
+  if(n<=0) return 0;
+  ensure_trace(g,n);
+  CK(cudaMemcpy(g->tab,ab,n*4,cudaMemcpyHostToDevice));CK(cudaMemcpy(g->tae,ae,n*4,cudaMemcpyHostToDevice));
+  CK(cudaMemcpy(g->tbb,bb,n*4,cudaMemcpyHostToDevice));CK(cudaMemcpy(g->tbe,be,n*4,cudaMemcpyHostToDevice));
+  for(int c=0;c<n;c+=TR_CHUNK){
+    int m=(n-c<TR_CHUNK)?n-c:TR_CHUNK;
+    int tpb=128, blk=(m*32+tpb-1)/tpb;
+    trace_batch<<<blk,tpb>>>(g->dA,g->dB,m,g->tab+c,g->tae+c,g->tbb+c,g->tbe+c,
+                             tspace,g->tWave,g->tOut+(size_t)c*FGA_TRACE_MAX_PAIRS,g->tOtlen+c,
+                             FGA_TRACE_MAX_PAIRS);
+  }
+  if(cudaGetLastError()!=cudaSuccess||cudaDeviceSynchronize()!=cudaSuccess) return 1;
+  CK(cudaMemcpy(out_tlen,g->tOtlen,n*4,cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(out_trace,g->tOut,(size_t)n*FGA_TRACE_MAX_PAIRS*sizeof(unsigned short),cudaMemcpyDeviceToHost));
   return 0;
 }
 

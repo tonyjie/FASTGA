@@ -126,3 +126,8 @@ package:
 
 deploy:
 	macdeployqt ALNview.app -dmg
+
+# A2: batched gpu_trace_batch library self-test
+trace_lib_test: gpu/trace_lib_test.cu gpu/trace_format.h gpu/fastga_gpu.h gpu/fastga_gpu.cu
+	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
+	nvcc -O3 -arch=sm_80 -Igpu -o gpu/trace_lib_test gpu/trace_lib_test.cu gpu/fastga_gpu.o

@@ -35,6 +35,17 @@ int gpu_discover_batch(gpu_ctx *g, int n,
                        const int *sa, const int *sb,
                        int *ab, int *ae, int *bb, int *be, int *diffs);
 
+/* Emit FastGA trace-points for N alignments whose endpoints (ab,ae,bb,be) index
+ * into the resident A/B contigs.  out_trace is caller-allocated as N fixed slots
+ * of FGA_TRACE_MAX_PAIRS uint16 each (out_trace + i*FGA_TRACE_MAX_PAIRS); out_tlen[i]
+ * is the used length (2*npanels), or negative on overflow: -1 band, -2 depth, -3 panels.
+ * Trace pairs are (diffs, delta-b) per global-tspace panel (same as Compute_Alignment).
+ * Returns 0 on success. */
+#define FGA_TRACE_MAX_PAIRS 512
+int gpu_trace_batch(gpu_ctx *g, int n,
+                    const int *ab, const int *ae, const int *bb, const int *be,
+                    int tspace, unsigned short *out_trace, int *out_tlen);
+
 #ifdef __cplusplus
 }
 #endif

@@ -71,6 +71,15 @@ left-alignment would need an indel-shift pass — deferred unless A4 shows dedup
   `fastga_gpu.{h,cu}`: one warp/alignment, variable-length outputs via offset array.
 - Self-test mirrors A1 but through the library.
 
+### A2 — DONE (2026-07-13) ✓
+`gpu_trace_batch(g, n, ab,ae,bb,be, tspace, out_trace, out_tlen)` in `fastga_gpu.{h,cu}`:
+one warp per alignment (endpoints index the resident contigs — no per-alignment memcpy),
+banded wave in a chunked global scratch (`TR_CHUNK=256` warps, ~1 GB), fixed
+`FGA_TRACE_MAX_PAIRS=512`-uint16 output slots. `gpu/trace_lib_test.cu`
+(`make trace_lib_test`) packs all tasks into one resident buffer (phase-aligning each
+A-offset to its `abpos mod tspace`) and validates the batched path: EXAMPLE 20k tasks →
+100% tlen match, 54.88% bit-exact — identical to the A1 kernel, confirming a faithful port.
+
 ### A3 — Integrate into `gpu_align_tube`
 - Replace `Compute_Alignment` with: GPU endpoints + GPU trace-points; CPU only
   `Compress_TraceTo8` + write `.las`. Keep the CPU `Local_Alignment` fallback for

@@ -83,3 +83,4 @@ FastGA.gpu
 gpu/disc_fidelity
 extract_trace
 gpu/trace_validate
+gpu/trace_lib_test
