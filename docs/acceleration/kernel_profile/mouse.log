@@ -1,0 +1,81 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/mouse.log ./g1.fna
+
+  Total Resources:  6.548u  2.309s  8.860w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/mouse.log -T32 -P/scratch/jl4257/prof_mouse/tmp ./g1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  50.393u  2.230s  4.002w  1314.9%
+
+  Sorting & output of each part
+
+  Sampled:    2305788869 ( 74.0%) kmers/positions
+
+  Resources for phase:  4:40.850u  19.344s  39.394w  762.0%
+
+  Total Resources:  5:31.244u  21.575s  43.396w  813.0%  2MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/mouse.log ./g2.fna
+
+  Total Resources:  5.522u  1.798s  7.322w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/mouse.log -T32 -P/scratch/jl4257/prof_mouse/tmp ./g2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  45.121u  2.139s  3.330w  1418.8%
+
+  Sorting & output of each part
+
+  Sampled:    2014634476 ( 73.9%) kmers/positions
+
+  Resources for phase:  4:02.717u  18.145s  35.089w  743.4%
+
+  Total Resources:  4:47.838u  20.285s  38.420w  802.0%  2MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/FastGA.prof -v -T32 -P/scratch/jl4257/prof_mouse/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/mouse.log -1:/scratch/jl4257/prof_mouse/out.1aln g1.fna g2.fna
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 2282738491, ave. len = 16.6, seeds per genome position = 0.7
+
+  Resources for phase:  3:38.753u  28.414s  19.864w  1244.2%
+
+  Seed sort and alignment search, 2 parts
+
+  Total hits over 85bp = 256577, 331423 aln's, 246850 non-redundant aln's of ave len 670
+
+  Sorting and merging alignments
+
+[PROFILE_STAGES] sort+align sub-phase wall-clock (s):
+[PS]   Phase3  search_seeds (chain + wave) = 19.07
+[PS]   Phase4  la_sort + la_merge (output)  = 0.12
+[PS]   (Phase2 reimport+rmsd_sort = -L sort+align total - the two above)
+
+[PROFILE_KERNEL] primary forward-wave calls = 377364
+[PK] band width histogram  (hgh-low; bin b = [2^(b-1),2^b) )
+[PK]   band <2^5  (      32) :            7  (0.00%)
+[PK]   band <2^6  (      64) :         3346  (0.89%)
+[PK]   band <2^7  (     128) :       200597  (53.16%)
+[PK]   band <2^8  (     256) :       173303  (45.92%)
+[PK]   band <2^9  (     512) :          111  (0.03%)
+[PK] differences histogram (dif; bin b = [2^(b-1),2^b) )
+[PK]   diff <2^1  (       2) :            1  (0.00%)
+[PK]   diff <2^2  (       4) :            2  (0.00%)
+[PK]   diff <2^4  (      16) :            4  (0.00%)
+[PK]   diff <2^5  (      32) :           15  (0.00%)
+[PK]   diff <2^6  (      64) :           82  (0.02%)
+[PK]   diff <2^7  (     128) :       173511  (45.98%)
+[PK]   diff <2^8  (     256) :       150048  (39.76%)
+[PK]   diff <2^9  (     512) :        46267  (12.26%)
+[PK]   diff <2^10 (    1024) :         7012  (1.86%)
+[PK]   diff <2^11 (    2048) :          419  (0.11%)
+[PK]   diff <2^12 (    4096) :            3  (0.00%)
+
+  Resources for phase:  6:20.929u  44.693s  34.045w  1250.2%
+
+  Total Resources:  9:59.683u  1:13.115s  53.919w  1247.8%  19MB

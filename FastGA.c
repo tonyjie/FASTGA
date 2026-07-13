@@ -4222,6 +4222,14 @@ static int la_merge(TP *parm)
   return (0);
 }
 
+#ifdef PROFILE_STAGES
+#include <time.h>
+extern void PK_dump(FILE *f);
+static double PS_search = 0, PS_output = 0, _ps_t = 0;
+static double ps_now(void)
+{ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec + t.tv_nsec*1e-9; }
+#endif
+
 static void pair_sort_search(GDB *gdb1, GDB *gdb2)
 { uint8 *sarray;
   int    swide;
@@ -4422,6 +4430,9 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
       for (p = 0; p < nused; p++)
         tarm[p].comp = u;
 
+#ifdef PROFILE_STAGES
+      _ps_t = ps_now();
+#endif
 #if defined(DEBUG_SORT) || defined(DEBUG_SEARCH) || defined(DEBUG_HIT) || defined(DEBUG_ALIGN)
       for (p = 0; p < nused; p++)
         search_seeds(tarm+p);
@@ -4431,6 +4442,9 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
       search_seeds(tarm);
       for (p = 1; p < nused; p++)
         pthread_join(threads[p],NULL);
+#endif
+#ifdef PROFILE_STAGES
+      PS_search += ps_now() - _ps_t;
 #endif
     }
 
@@ -4485,6 +4499,9 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
   if (LOG_FILE)
     fprintf(LOG_FILE,"\n  Sorting and merging alignments\n");
 
+#ifdef PROFILE_STAGES
+  _ps_t = ps_now();
+#endif
 #ifdef DEBUG_LASORT
   for (p = 0; p < NTHREADS; p++)
     la_sort(tarm+p);
@@ -4498,6 +4515,16 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
 
   if (la_merge(tarm))
     Clean_Exit(1);
+#ifdef PROFILE_STAGES
+  PS_output += ps_now() - _ps_t;
+  { FILE *f = LOG_FILE ? LOG_FILE : stderr;
+    fprintf(f,"\n[PROFILE_STAGES] sort+align sub-phase wall-clock (s):\n");
+    fprintf(f,"[PS]   Phase3  search_seeds (chain + wave) = %.2f\n",PS_search);
+    fprintf(f,"[PS]   Phase4  la_sort + la_merge (output)  = %.2f\n",PS_output);
+    fprintf(f,"[PS]   (Phase2 reimport+rmsd_sort = -L sort+align total - the two above)\n");
+    PK_dump(f);
+  }
+#endif
 }
 
 static void short_GDB_fix(GDB *gdb)

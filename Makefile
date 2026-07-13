@@ -56,6 +56,12 @@ ALNtoPAF: ALNtoPAF.c align.h align.c GDB.c GDB.h alncode.c alncode.h ONElib.c ON
 ALNtoPSL: ALNtoPSL.c align.h align.c GDB.c GDB.h alncode.c alncode.h ONElib.c ONElib.h
 	$(CC) $(CFLAGS) -o ALNtoPSL ALNtoPSL.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
 
+extract_tasks: gpu/extract_tasks.c gpu/task_format.h align.h align.c GDB.c GDB.h alncode.c alncode.h ONElib.c ONElib.h
+	$(CC) $(CFLAGS) -I. -o extract_tasks gpu/extract_tasks.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
+
+extract_disc: gpu/extract_disc.c gpu/disc_format.h align.h align.c GDB.c GDB.h alncode.c alncode.h ONElib.c ONElib.h
+	$(CC) $(CFLAGS) -I. -o extract_disc gpu/extract_disc.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
+
 ALNreset: ALNreset.c GDB.c GDB.h ONElib.c ONElib.h alncode.c alncode.h
 	$(CC) $(CFLAGS) -o ALNreset ALNreset.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
 

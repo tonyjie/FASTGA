@@ -1,0 +1,100 @@
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/perf_human.Llog ./g1.fna
+
+  Total Resources:  6.126u  2.271s  8.398w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/perf_human.Llog -T32 -P/scratch/jl4257/perf_m4/tmp ./g1.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  50.467u  2.343s  4.006w  1318.2%
+
+  Sorting & output of each part
+
+  Sampled:    2305788869 ( 74.0%) kmers/positions
+
+  Resources for phase:  4:40.671u  19.607s  39.558w  759.1%
+
+  Total Resources:  5:31.139u  21.950s  43.564w  810.5%  2MB
+
+FAtoGDB -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/perf_human.Llog ./g2.fna
+
+  Total Resources:  6.588u  2.319s  8.909w  100.0%  0MB
+
+GIXmake -v -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/perf_human.Llog -T32 -P/scratch/jl4257/perf_m4/tmp ./g2.1gdb
+
+  Partitioning K-mers via pos-lists into 32 parts
+
+  Resources for phase:  56.689u  2.517s  3.038w  1948.7%
+
+  Sorting & output of each part
+
+  Sampled:    2316875829 ( 73.9%) kmers/positions
+
+  Resources for phase:  4:53.423u  21.122s  37.913w  829.6%
+
+  Total Resources:  5:50.113u  23.640s  40.951w  912.7%  2MB
+
+/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/FastGA.prof -v -T32 -P/scratch/jl4257/perf_m4/tmp -L:/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/docs/acceleration/kernel_profile/perf_human.Llog g1.fna g2.fna
+
+  Using 32 threads
+
+  Adaptive seed merge for G1
+
+  Total seeds = 1368278538, ave. len = 38.4, seeds per genome position = 0.4
+
+  Resources for phase:  4:19.760u  18.159s  17.056w  1629.4%
+
+  Seed sort and alignment search, 2 parts
+
+  Total hits over 85bp = 1496261, 1402964 aln's, 1046010 non-redundant aln's of ave len 23814
+
+  Sorting and merging alignments
+
+[PROFILE_STAGES] sort+align sub-phase wall-clock (s):
+[PS]   Phase3  search_seeds (chain + wave) = 592.39
+[PS]   Phase4  la_sort + la_merge (output)  = 2.87
+[PS]   (Phase2 reimport+rmsd_sort = -L sort+align total - the two above)
+
+[PROFILE_KERNEL] primary forward-wave calls = 1421772
+[PK] band width histogram  (hgh-low; bin b = [2^(b-1),2^b) )
+[PK]   band <2^0  (       1) :          195  (0.01%)
+[PK]   band <2^1  (       2) :           10  (0.00%)
+[PK]   band <2^2  (       4) :         1147  (0.08%)
+[PK]   band <2^3  (       8) :         1049  (0.07%)
+[PK]   band <2^4  (      16) :         3565  (0.25%)
+[PK]   band <2^5  (      32) :         8764  (0.62%)
+[PK]   band <2^6  (      64) :        65402  (4.60%)
+[PK]   band <2^7  (     128) :       998456  (70.23%)
+[PK]   band <2^8  (     256) :       342229  (24.07%)
+[PK]   band <2^9  (     512) :          955  (0.07%)
+[PK] differences histogram (dif; bin b = [2^(b-1),2^b) )
+[PK]   diff <2^0  (       1) :          448  (0.03%)
+[PK]   diff <2^1  (       2) :          882  (0.06%)
+[PK]   diff <2^2  (       4) :          887  (0.06%)
+[PK]   diff <2^3  (       8) :          762  (0.05%)
+[PK]   diff <2^4  (      16) :         1852  (0.13%)
+[PK]   diff <2^5  (      32) :         3690  (0.26%)
+[PK]   diff <2^6  (      64) :        11567  (0.81%)
+[PK]   diff <2^7  (     128) :       257059  (18.08%)
+[PK]   diff <2^8  (     256) :       329523  (23.18%)
+[PK]   diff <2^9  (     512) :       309000  (21.73%)
+[PK]   diff <2^10 (    1024) :       181682  (12.78%)
+[PK]   diff <2^11 (    2048) :        86160  (6.06%)
+[PK]   diff <2^12 (    4096) :        63592  (4.47%)
+[PK]   diff <2^13 (    8192) :        84632  (5.95%)
+[PK]   diff <2^14 (   16384) :        55870  (3.93%)
+[PK]   diff <2^15 (   32768) :        11533  (0.81%)
+[PK]   diff <2^16 (   65536) :         9682  (0.68%)
+[PK]   diff <2^17 (  131072) :         7988  (0.56%)
+[PK]   diff <2^18 (  262144) :         3920  (0.28%)
+[PK]   diff <2^19 (  524288) :         1041  (0.07%)
+[PK]   diff <2^20 ( 1048576) :            2  (0.00%)
+
+  Resources for phase:  54:42.568u  46.166s  10:06.405w  548.9%
+
+  Converting aln's to PAF-format
+
+  Resources for phase:  0.000u  0.048s  0.785w  6.2%
+
+  Total Resources:  59:02.328u  1:04.373s  10:24.248w  577.8%  20MB

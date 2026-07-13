@@ -65,3 +65,12 @@ __pycache__/
 docs/benchmark_matrix/divergence/*/logs/
 docs/benchmark_matrix/divergence/*/time/
 docs/benchmark_matrix/divergence/*/*.stderr
+
+# GPU experiment + profiling build artifacts
+FastGA.prof
+/extract_tasks
+/extract_disc
+gpu/gpu_align
+gpu/gpu_discover
+gpu/*.o
+docs/acceleration/kernel_profile/*.stderr

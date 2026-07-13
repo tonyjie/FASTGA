@@ -60,6 +60,10 @@ typedef struct            //  Hidden from the user, working space for each threa
     void   *trace;
     int     alnmax;
     void   *alnpts;
+#ifdef PROFILE_KERNEL
+    int     pk_band;
+    int     pk_diff;
+#endif
   } _Work_Data;
 
 Work_Data *New_Work_Data()
@@ -349,6 +353,35 @@ typedef struct
 
 static int VectorEl = 4*sizeof(int) + sizeof(BVEC);
 
+#ifdef PROFILE_KERNEL
+#include <stdatomic.h>
+static _Atomic long long PK_band[64];
+static _Atomic long long PK_diff[64];
+static _Atomic long long PK_nwave;
+static inline int pk_bin(int v)        //  log2 upper-bin: v in [2^(b-1),2^b) -> b
+{ int b = 0; while (v > 0) { b++; v >>= 1; } return (b < 64 ? b : 63); }
+void PK_record(int band, int diff)
+{ atomic_fetch_add_explicit(&PK_band[pk_bin(band)],1,memory_order_relaxed);
+  atomic_fetch_add_explicit(&PK_diff[pk_bin(diff)],1,memory_order_relaxed);
+  atomic_fetch_add_explicit(&PK_nwave,1,memory_order_relaxed);
+}
+void PK_dump(FILE *f)
+{ long long n = atomic_load(&PK_nwave); int b;
+  fprintf(f,"\n[PROFILE_KERNEL] primary forward-wave calls = %lld\n",n);
+  fprintf(f,"[PK] band width histogram  (hgh-low; bin b = [2^(b-1),2^b) )\n");
+  for (b = 0; b < 32; b++)
+    { long long c = atomic_load(&PK_band[b]);
+      if (c) fprintf(f,"[PK]   band <2^%-2d (%8d) : %12lld  (%.2f%%)\n",b,(1<<b),c,n?100.0*c/n:0);
+    }
+  fprintf(f,"[PK] differences histogram (dif; bin b = [2^(b-1),2^b) )\n");
+  for (b = 0; b < 32; b++)
+    { long long c = atomic_load(&PK_diff[b]);
+      if (c) fprintf(f,"[PK]   diff <2^%-2d (%8d) : %12lld  (%.2f%%)\n",b,(1<<b),c,n?100.0*c/n:0);
+    }
+  fflush(f);
+}
+#endif
+
 static int forward_wave(_Work_Data *work, _Align_Spec *spec, Alignment *align,
                         int *mind, int maxd, int mida, int minp, int maxp, int aoff)
 { char *aseq  = align->aseq;
@@ -384,6 +417,10 @@ static int forward_wave(_Work_Data *work, _Align_Spec *spec, Alignment *align,
   hgh = maxd;
   low = *mind;
   dif = 0;
+#ifdef PROFILE_KERNEL
+  work->pk_band = hgh - low;
+  work->pk_diff = 0;
+#endif
 
   { int span, wing;
 
@@ -630,6 +667,10 @@ static int forward_wave(_Work_Data *work, _Align_Spec *spec, Alignment *align,
         am = V[--hgh];
 
       dif += 1;
+#ifdef PROFILE_KERNEL
+      if ((hgh-low) > work->pk_band) work->pk_band = hgh-low;
+      work->pk_diff = dif;
+#endif
 
       ac = V[hgh+1] = V[low-1] = -1;
       bs = bseq - hgh;
@@ -1487,6 +1528,9 @@ int Local_Alignment(Alignment *align, Work_Data *ework, Align_Spec *espec,
 
   if (forward_wave(work,spec,align,&low,hgh,anti,minp,maxp,aoff))
     return (1);
+#ifdef PROFILE_KERNEL
+  PK_record(work->pk_band, work->pk_diff);
+#endif
 
   fshort = ((apath->aepos + apath->bepos) - anti < DUB_TRIM);
 
