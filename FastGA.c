@@ -27,6 +27,10 @@
 #include "GDB.h"
 #include "align.h"
 #include "alncode.h"
+#ifdef GPU
+#include "gpu/fastga_gpu.h"
+static int GPU_MODE = 0;    //  -G : offload forward-strand Local_Alignment to the A100
+#endif
 
 #undef    DEBUG_SPLIT
 #undef    DEBUG_MERGE
@@ -3046,8 +3050,42 @@ typedef struct
     Align_Spec *spec;           //  alignment spec
     Alignment   align;          //  alignment record
     Overlap     ovl;            //  overlap record
-
+#ifdef GPU
+    gpu_ctx    *gctx;           //  per-thread GPU alignment context (-G)
+    int         gpu_loaded;     //  ctg pair currently resident on the GPU
+#endif
   } Contig_Bundle;
+
+#ifdef GPU
+//  -G forward-strand path: discover endpoints on the A100 (from a seed at the tube
+//  centre), then regenerate trace points on the CPU.  Fills pair->align.path.
+static void gpu_align_tube(Contig_Bundle *pair, int dgmin, int dgmax, int amid)
+{ Alignment *align = &(pair->align);
+  Path      *path  = align->path;
+  int dg = (dgmin + dgmax) / 2;
+  int sa = (amid + dg) >> 1;
+  int sb = (amid - dg) >> 1;
+  int ab, ae, bb, be, df;
+
+  if (sa < 0) sa = 0;  if (sa >= align->alen) sa = align->alen - 1;
+  if (sb < 0) sb = 0;  if (sb >= align->blen) sb = align->blen - 1;
+  gpu_discover_batch(pair->gctx, 1, &sa, &sb, &ab, &ae, &bb, &be, &df);
+  path->abpos = ab; path->aepos = ae;
+  path->bbpos = bb; path->bepos = be;
+  path->diffs = df;
+  //  Only trace alignments that would pass FastGA's keep-filter AND look self-consistent
+  //  (monotone, in-range, drift within the aligner's band).  Bad GPU endpoints -> drop,
+  //  so a wrong tube is filtered out rather than aborting Compute_Trace.
+  { int rlen = ae - ab, blen2 = be - bb, drift = rlen - blen2;
+    if (drift < 0) drift = -drift;
+    if (ae > ab && be > bb && ae <= align->alen && be <= align->blen &&
+        rlen >= ALIGN_MIN && ALIGN_RATE*rlen >= df && df <= rlen && drift <= 512)
+      Compute_Trace_PTS(align, pair->work, TSPACE, GREEDIEST, 1, -1);
+    else
+      { path->aepos = path->abpos = 0; path->tlen = 0; }
+  }
+}
+#endif
 
 static int ALIGN_SORT(const void *l, const void *r)
 { Overlap *ol = *((Overlap **) l);
@@ -3071,6 +3109,9 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
   Path       *path  = align->path;
   FILE       *ofile = pair->ofile;
   FILE       *tfile = pair->tfile;
+#endif
+#ifdef GPU
+  pair->gpu_loaded = 0;       //  (re)load this contig pair onto the GPU on first tube
 #endif
 #if defined(DEBUG_SEARCH) || defined(DEBUG_HIT)
   int         repgo;
@@ -3291,6 +3332,13 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
 #endif
                         }
 #endif
+#ifdef GPU
+                      if (GPU_MODE && !comp && !pair->gpu_loaded)
+                        { gpu_load_seqs(pair->gctx,(unsigned char *) align->aseq,align->alen,
+                                                   (unsigned char *) align->bseq,align->blen);
+                          pair->gpu_loaded = 1;
+                        }
+#endif
 
                       dgmin += (cdiag<<BUCK_SHIFT);
                       dgmax += (cdiag<<BUCK_SHIFT);
@@ -3347,7 +3395,13 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
                                   path->abpos = path->aepos = 0;
                               }
                             else
-                              { if (Local_Alignment(align,work,spec,dgmin,dgmax,amid,-1,-1))
+                              {
+#ifdef GPU
+                                if (GPU_MODE)
+                                  gpu_align_tube(pair,dgmin,dgmax,amid);
+                                else
+#endif
+                                if (Local_Alignment(align,work,spec,dgmin,dgmax,amid,-1,-1))
                                   Clean_Exit(1);
                               }
 
@@ -3848,6 +3902,10 @@ static void *search_seeds(void *args)
   pair->ovl.bread = -1;
   pair->work = New_Work_Data();
   pair->spec = New_Align_Spec(1.-ALIGN_RATE,100,gdb1->freq,0);
+#ifdef GPU
+  pair->gctx = NULL;
+  if (GPU_MODE) pair->gctx = gpu_open();
+#endif
   if (pair->work == NULL || pair->spec == NULL)
     Clean_Exit(1);
   pair->ofile = ofile;
@@ -3875,6 +3933,9 @@ static void *search_seeds(void *args)
     }
 
   Free_Align_Spec(pair->spec);
+#ifdef GPU
+  if (GPU_MODE && pair->gctx) gpu_close(pair->gctx);
+#endif
   Free_Work_Data(pair->work);
   free(pair->align.aseq-1);
   free(pair->align.bseq-1);
@@ -4590,7 +4651,7 @@ int main(int argc, char *argv[])
       if (argv[i][0] == '-')
         switch (argv[i][1])
         { default:
-            ARG_FLAGS("vkMS")
+            ARG_FLAGS("vkMSG")
             break;
           case '1':
             if (strncmp(argv[i]+1,"1:",2) == 0)
@@ -4704,6 +4765,9 @@ int main(int argc, char *argv[])
     KEEP      = flags['k'];
     SOFT_MASK = flags['M'] || (NMASK1 > 0) || (NMASK2 > 0);
     SYMMETRIC = flags['S'];
+#ifdef GPU
+    GPU_MODE  = flags['G'];
+#endif
 
     if (argc != 3 && argc != 2)
       { fprintf(stderr,"\nUsage: %s %s\n",Prog_Name,Usage[0]);

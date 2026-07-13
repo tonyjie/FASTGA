@@ -56,7 +56,34 @@ per-thread `.las`. `Local_Alignment` is the 80-98% bottleneck (M1).
 - **Giant contigs**: loading chr-scale contigs per pair is fine on 80 GB but the H2D cost
   must be amortized across the pair's tubes.
 
-## Status
-Foundation done: offload boundary identified, GPU library built + linkable, kernels
-validated (16.7x editdist; 84% discovery endpoints). Remaining: the `align_contigs`
-two-pass batching + `-G` flag + CPU trace regen + `.1aln` quality/speed validation.
+## Status (2026-07-13)
+
+**Wired and building.** `FastGA.gpu` (make target; `-DGPU`, links `fastga_gpu.o` +
+`-lcudart`, `--default-stream per-thread`) compiles; base `FastGA` unaffected (all
+`#ifdef GPU`). The `-G` path is fully plumbed: flag parse, per-thread `gpu_ctx`
+open/close, `gpu_load_seqs` once per contig-pair, `gpu_align_tube` replaces the
+non-comp `Local_Alignment`, CPU `Compute_Trace_PTS` regenerates trace. It runs
+end-to-end (EXAMPLE, 42 s, GPU engaged).
+
+**Blocking bug (diagnosed): endpoint validity + no fallback.** The run aborts in
+`Compute_Trace_PTS` ("Bad alignment between trace points") on the first bad GPU
+alignment. Two compounding causes:
+  (a) the seed formula `sa=(amid+dg)/2, sb=(amid-dg)/2` matches the aligner's
+      `anti`/diagonal->index mapping, BUT it seeds from the tube-BOX centre, which can
+      lie outside the true alignment (the box is >= the alignment) -> the x-drop wave
+      finds a wrong/partial alignment;
+  (b) `gpu_align_tube` feeds those endpoints straight into `Compute_Trace_PTS`, which
+      hard-exits (not a return code) the moment a 100 bp panel doesn't align -> one bad
+      tube kills the whole run. (The kernel itself is fine: 84% within 50 bp when seeded
+      at the true midpoint via `extract_disc`.)
+
+**To finish (bounded):**
+1. **Seed from a real chain seed** (a sorted-seed entry inside the chain that triggered
+   the tube) rather than the box centre -> guaranteed inside the alignment.
+2. **Validate before trace / fall back**: check the GPU endpoints (monotone,
+   `aepos<=alen`, `bepos<=blen`, `diffs` consistent with length) and for any that look
+   off, fall back to CPU `Local_Alignment` for that tube instead of aborting. Or make a
+   non-fatal `Compute_Trace` path.
+3. Improve x-drop fidelity toward FastGA's `TRIM_MLAG` (84% -> ~99%).
+4. Then batch (two-pass per contig-pair) for speed; validate `.1aln` coverage vs CPU +
+   end-to-end timing.
