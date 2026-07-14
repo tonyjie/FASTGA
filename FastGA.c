@@ -40,6 +40,16 @@ static inline double _wt_now(void)
 { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec + t.tv_nsec*1e-9; }
 #endif
 
+#ifdef SEQ_CACHE
+//  Decompress every B-contig ONCE into a shared read-only array (forward NUMERIC).  perf shows
+//  Uncompress_Read is 29% of the align run: the B-contig is re-decompressed on every contig-pair
+//  (A is stable across the inner B-sweep, B is not).  B is never complemented in the main path,
+//  so a single forward cache serves both strands.  Trades ~genome-size RAM for eliminating the
+//  redundant re-decompression.
+static char **Bcache = NULL;
+static int    Bcache_n = 0;
+#endif
+
 #undef    DEBUG_SPLIT
 #undef    DEBUG_MERGE
 #undef    DEBUG_SORT
@@ -3057,6 +3067,7 @@ typedef struct
     Work_Data  *work;           //  work storage for alignment module
     Align_Spec *spec;           //  alignment spec
     Alignment   align;          //  alignment record
+    char       *bseq_alloc;     //  freeable B-buffer (align.bseq may point at the shared cache)
     Overlap     ovl;            //  overlap record
 #ifdef GPU
     gpu_ctx    *gctx;           //  per-thread GPU alignment context (-G)
@@ -3357,8 +3368,13 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
 #endif
                         }
                       if (ctg2 != ovl->bread)
-                        { if (Get_Contig(pair->gdb2,ctg2,NUMERIC,align->bseq) == NULL)
+                        {
+#ifdef SEQ_CACHE
+                          align->bseq = Bcache[ctg2];   //  shared cache: no disk read / decompress
+#else
+                          if (Get_Contig(pair->gdb2,ctg2,NUMERIC,align->bseq) == NULL)
                             Clean_Exit(1);
+#endif
                           align->blen = blen;
                           ovl->bread = ctg2;
 #ifdef DEBUG_HIT
@@ -3929,6 +3945,7 @@ static void *search_seeds(void *args)
   pair->gdb2 = gdb2;
   pair->align.aseq = New_Contig_Buffer(gdb1);
   pair->align.bseq = New_Contig_Buffer(gdb2);
+  pair->bseq_alloc = pair->align.bseq;   //  the freeable buffer; align.bseq may be repointed to Bcache
   if (pair->align.bseq == NULL || pair->align.bseq == NULL)
     Clean_Exit(1);
   pair->align.path = &(pair->ovl.path);
@@ -3993,7 +4010,7 @@ static void *search_seeds(void *args)
   pthread_mutex_lock(&WAVE_MTX); WAVE_TOTAL += pair->twave; pthread_mutex_unlock(&WAVE_MTX);
 #endif
   free(pair->align.aseq-1);
-  free(pair->align.bseq-1);
+  free(pair->bseq_alloc-1);   //  free the original buffer, not the (possibly Bcache) align.bseq
 
   parm->nhits += pair->nhits;
   parm->nlass += pair->nlass;
@@ -4346,6 +4363,28 @@ static double ps_now(void)
 { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec + t.tv_nsec*1e-9; }
 #endif
 
+#ifdef SEQ_CACHE
+static void build_bcache(GDB *gdb)
+{ int c;
+  Bcache_n = gdb->ncontig;
+  Bcache = (char **) Malloc(sizeof(char *)*(size_t)gdb->ncontig,"Bcache");
+  if (Bcache == NULL) Clean_Exit(1);
+  for (c = 0; c < gdb->ncontig; c++)
+    { if (gdb->contigs[c].boff < 0) { Bcache[c] = NULL; continue; }
+      char *buf = (char *) Malloc(gdb->contigs[c].clen+8,"Bcache contig");
+      if (buf == NULL) Clean_Exit(1);
+      if (Get_Contig(gdb,c,NUMERIC,buf+1) == NULL) Clean_Exit(1);
+      Bcache[c] = buf+1;
+    }
+}
+static void free_bcache(void)
+{ int c;
+  if (Bcache == NULL) return;
+  for (c = 0; c < Bcache_n; c++) if (Bcache[c]) free(Bcache[c]-1);
+  free(Bcache); Bcache = NULL;
+}
+#endif
+
 static void pair_sort_search(GDB *gdb1, GDB *gdb2)
 { uint8 *sarray;
   int    swide;
@@ -4367,6 +4406,10 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
     }
   if (LOG_FILE)
     fprintf(LOG_FILE,"\n  Seed sort and alignment search, %d parts\n",2*NPARTS);
+
+#ifdef SEQ_CACHE
+  build_bcache(gdb2);
+#endif
 
   unit[0] = N_Units;
   unit[1] = C_Units;
@@ -4568,6 +4611,9 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
 #endif
     }
 
+#ifdef SEQ_CACHE
+  free_bcache();
+#endif
   free(panel);
   free(sarray);
   for (p = 0; p < NTHREADS; p++)

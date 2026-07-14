@@ -65,6 +65,28 @@ supports this; wiring it into the `-G` path is a one-line swap (`Get_Contig(...,
 `gpu_load_seqs_2bit` instead of `Get_Contig(...,NUMERIC)` + `gpu_load_seqs`), best done as part
 of A3b so the resident 2-bit genome is shared across the whole batched pipeline.
 
+## CPU decompression cache (`-DSEQ_CACHE`) — implemented + measured
+
+`FastGA.c` under `#ifdef SEQ_CACHE`: decompress every B-contig once into a shared read-only
+array (`build_bcache`), and point `align->bseq` at it instead of re-`Get_Contig`-ing per
+contig-pair. (A is already loaded once per A-contig; B is the redundant one; B is never
+complemented in the main path, so one forward cache serves both strands.)
+
+Human GRCh38 × CHM13, T=32 — **per-alignment output byte-identical (md5 match, 518,037 records)**:
+| | wall | CPU-time (user) | RSS |
+|---|---:|---:|---:|
+| stock | 494.7 s | 2584.7 CPU-s | 19.9 GB |
+| cache | 448.2 s | 1761.2 CPU-s | 15.3 GB |
+| **ratio** | **1.10×** | **1.47×** | — |
+
+**Key nuance:** removing the 29% decompression cuts CPU-time 1.47× but wall only **1.10×** —
+because decompression is *parallel* work spread across cores, while the wall is bound by the
+wave's ~6-core critical path (the wave is the least-parallel phase). So the decompression cache
+is an energy/CPU-efficiency win (and a real one, worth upstreaming), but **the wave is the wall
+lever** — which is exactly what the GPU offload targets. (A GPU pipeline still eliminates the
+decompression by keeping the genome 2-bit-resident, per `gpu_load_seqs_2bit`; it just isn't the
+main wall win.)
+
 ## Recommended next step
 Map decompression to the GPU together with the wave: keep each genome's `.bps` (2-bit) resident,
 add an on-device unpack (or 2-bit-aware sequence access in the wave/discovery kernels), and drop

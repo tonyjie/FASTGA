@@ -91,3 +91,5 @@ FastGA.wave
 FastGA.prof
 *.perf.data
 gpu/decomp_bench
+FastGA.stock
+FastGA.cache
