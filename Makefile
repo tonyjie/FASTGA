@@ -149,3 +149,7 @@ cpu_trace_bench: gpu/cpu_trace_bench.c gpu/trace_format.h align.c align.h GDB.c 
 # On-device 2-bit decompression bench (the #2 hotspot) vs CPU Uncompress_Read
 decomp_bench: gpu/decomp_bench.cu
 	nvcc -O3 -arch=sm_80 -Xcompiler -fopenmp -o gpu/decomp_bench gpu/decomp_bench.cu
+
+# A3b batching-queue unit test (pure pthreads, no CUDA)
+batch_queue_test: gpu/batch_queue_test.c gpu/batch_queue.c gpu/batch_queue.h
+	$(CC) $(CFLAGS) -Igpu -o gpu/batch_queue_test gpu/batch_queue_test.c gpu/batch_queue.c -lpthread

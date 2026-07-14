@@ -93,3 +93,4 @@ FastGA.prof
 gpu/decomp_bench
 FastGA.stock
 FastGA.cache
+gpu/batch_queue_test
