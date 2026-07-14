@@ -90,3 +90,4 @@ gpu/cpu_trace_bench
 FastGA.wave
 FastGA.prof
 *.perf.data
+gpu/decomp_bench

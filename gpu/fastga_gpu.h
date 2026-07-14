@@ -28,6 +28,12 @@ void     gpu_close(gpu_ctx *g);
 void gpu_load_seqs(gpu_ctx *g, const unsigned char *A, int alen,
                               const unsigned char *B, int blen);
 
+/* Same, but the inputs are the 2-bit PACKED contigs (from .bps, (len+3)/4 bytes each):
+ * the device unpacks them on-GPU (byte-identical to Uncompress_Read), so the CPU never
+ * decompresses. Eliminates the 29%-of-runtime Uncompress_Read hotspot and shrinks H2D 4x. */
+void gpu_load_seqs_2bit(gpu_ctx *g, const unsigned char *packedA, int alen,
+                                    const unsigned char *packedB, int blen);
+
 /* Discover N local alignments: from each seed anchor (sa[i],sb[i]) (A/B contig
  * coords) run forward+reverse x-drop wave -> endpoints (ab,ae,bb,be) + diffs.
  * Output arrays are caller-allocated, length >= N. Returns 0 on success. */

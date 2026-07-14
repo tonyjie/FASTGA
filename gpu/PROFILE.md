@@ -44,6 +44,27 @@ align run → the ceiling jumps to ~1/(1-0.89) ≈ **~9×** on the align-only ru
 which is a separate one-time cost). This is the real reason to map the second kernel: it is the
 difference between a ~2× and a ~5-9× system.
 
+## On-device decompression — IMPLEMENTED + measured (2026-07-13)
+
+`gpu/decomp_bench.cu` (`make decomp_bench`) + `unpack2bit` / `gpu_load_seqs_2bit` in the
+library. 3 Gbp (human-scale), output validated byte-identical to the `Uncompress_Read` formula:
+
+| | rate |
+|---|---:|
+| CPU 1-thread | 1.14 Gbase/s |
+| CPU 32-thread (single pass) | 16.1 Gbase/s (0.186 s) |
+| **GPU kernel** | **257 Gbase/s (0.012 s) — 16× CPU-32** |
+| GPU incl. 2-bit H2D (750 MB) | 68 Gbase/s |
+
+The deeper point: a *single* 3 Gbp CPU pass is only 0.186 s, yet `Uncompress_Read` is 29%
+(~140 s) of the run — so the cost is **redundant re-decompression** (the same contig unpacked
+per contig-pair). Keeping each genome 2-bit-resident on the GPU (750 MB) and unpacking once
+(12 ms) — via `gpu_load_seqs_2bit`, which uploads the packed `.bps` and unpacks on-device
+instead of the host copying pre-decompressed NUMERIC — makes the 29% vanish. The library now
+supports this; wiring it into the `-G` path is a one-line swap (`Get_Contig(...,COMPRESSED)` +
+`gpu_load_seqs_2bit` instead of `Get_Contig(...,NUMERIC)` + `gpu_load_seqs`), best done as part
+of A3b so the resident 2-bit genome is shared across the whole batched pipeline.
+
 ## Recommended next step
 Map decompression to the GPU together with the wave: keep each genome's `.bps` (2-bit) resident,
 add an on-device unpack (or 2-bit-aware sequence access in the wave/discovery kernels), and drop

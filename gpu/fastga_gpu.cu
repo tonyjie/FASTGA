@@ -192,7 +192,17 @@ __global__ void disc_batch_warp(const u8*A,int alen,const u8*B,int blen,int n,
   if(lane==0){ae[warp]=SA+fx;be[warp]=SB+fy;ab[warp]=SA-rx;bb[warp]=SB-ry;df[warp]=fd+rd;}
 }
 
+// on-device 2-bit -> NUMERIC unpack: base[p] = (packed[p>>2] >> ((p&3)*2)) & 3
+// (byte-identical to gene_core.c Uncompress_Read). Eliminates the CPU decompression that
+// perf shows is 29% of the human align run, and shrinks the host->device copy 4x.
+__global__ void unpack2bit(const u8* packed, u8* out, int len){
+  int p = blockIdx.x*blockDim.x + threadIdx.x;
+  if(p>=len) return;
+  out[p] = (packed[p>>2] >> ((p&3)*2)) & 3;
+}
+
 struct gpu_ctx { u8 *dA,*dB; int alen,blen; size_t acap,bcap;
+                 u8 *dPackA,*dPackB; size_t pcapA,pcapB;   // device 2-bit scratch
                  int *dsa,*dsb,*dab,*dae,*dbb,*dbe,*ddf; int ncap;
                  // trace-emission scratch/buffers
                  int *tab,*tae,*tbb,*tbe,*tOtlen; short *tWave; unsigned short *tOut;
@@ -204,6 +214,7 @@ extern "C" gpu_ctx *gpu_open(void){
 extern "C" void gpu_close(gpu_ctx *g){
   if(!g)return;
   if(g->dA)cudaFree(g->dA); if(g->dB)cudaFree(g->dB);
+  if(g->dPackA)cudaFree(g->dPackA); if(g->dPackB)cudaFree(g->dPackB);
   if(g->dsa){cudaFree(g->dsa);cudaFree(g->dsb);cudaFree(g->dab);cudaFree(g->dae);cudaFree(g->dbb);cudaFree(g->dbe);cudaFree(g->ddf);}
   if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);}
   if(g->tWave)cudaFree(g->tWave);
@@ -214,6 +225,22 @@ extern "C" void gpu_load_seqs(gpu_ctx *g,const u8*A,int alen,const u8*B,int blen
   if((size_t)blen>g->bcap){ if(g->dB)cudaFree(g->dB); CK(cudaMalloc(&g->dB,blen)); g->bcap=blen; }
   CK(cudaMemcpy(g->dA,A,alen,cudaMemcpyHostToDevice));
   CK(cudaMemcpy(g->dB,B,blen,cudaMemcpyHostToDevice));
+  g->alen=alen; g->blen=blen;
+}
+// Load 2-bit packed contigs (from .bps, NO CPU decompression) and unpack on-device.
+// packedA/B hold (alen+3)/4 and (blen+3)/4 bytes. Resident dA/dB end up NUMERIC (0-3),
+// identical to gpu_load_seqs' input -- but the CPU never runs Uncompress_Read.
+extern "C" void gpu_load_seqs_2bit(gpu_ctx *g,const u8*packedA,int alen,const u8*packedB,int blen){
+  size_t pa=(alen+3)/4, pb=(blen+3)/4;
+  if((size_t)alen>g->acap){ if(g->dA)cudaFree(g->dA); CK(cudaMalloc(&g->dA,alen)); g->acap=alen; }
+  if((size_t)blen>g->bcap){ if(g->dB)cudaFree(g->dB); CK(cudaMalloc(&g->dB,blen)); g->bcap=blen; }
+  if(pa>g->pcapA){ if(g->dPackA)cudaFree(g->dPackA); CK(cudaMalloc(&g->dPackA,pa)); g->pcapA=pa; }
+  if(pb>g->pcapB){ if(g->dPackB)cudaFree(g->dPackB); CK(cudaMalloc(&g->dPackB,pb)); g->pcapB=pb; }
+  CK(cudaMemcpy(g->dPackA,packedA,pa,cudaMemcpyHostToDevice));
+  CK(cudaMemcpy(g->dPackB,packedB,pb,cudaMemcpyHostToDevice));
+  int TPB=256;
+  unpack2bit<<<(int)((alen+TPB-1)/TPB),TPB>>>(g->dPackA,g->dA,alen);
+  unpack2bit<<<(int)((blen+TPB-1)/TPB),TPB>>>(g->dPackB,g->dB,blen);
   g->alen=alen; g->blen=blen;
 }
 static void ensure_n(gpu_ctx*g,int n){
