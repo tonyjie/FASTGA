@@ -29,7 +29,25 @@
 #include "alncode.h"
 #ifdef GPU
 #include "gpu/fastga_gpu.h"
+#include "gpu/batch_queue.h"
 static int GPU_MODE = 0;    //  -G : offload forward-strand Local_Alignment to the A100
+
+//  A3b batched pipeline: one shared resident genome + a dynamic batching queue. Worker threads
+//  keep their exact tube-walk; the non-comp per-tube wave becomes bq_submit() and a whole batch
+//  of tubes (from many threads) runs as one GPU discover+trace.
+static gpu_ctx     *G_GPU   = NULL;   //  shared: both genomes resident + flush scratch
+static batch_queue *G_QUEUE = NULL;
+static int *GbaseA=NULL,*GlenA=NULL,*GbaseB=NULL,*GlenB=NULL;  //  contig -> resident base offset / length
+
+//  One tube: request fields in, result fields out (submitted/returned in place).
+typedef struct
+  { int sa, sb;                 //  genome-relative seed anchor
+    int aLo, aHi, bLo, bHi;     //  genome-relative contig bounds
+    int aBase;                  //  A-contig base (contig-relative trace phasing)
+    int ab, ae, bb, be, diffs;  //  result: genome-relative endpoints + diffs
+    int tlen, ok;               //  result: trace length; ok=1 use GPU, ok=0 -> CPU fallback
+    unsigned short trace[FGA_TRACE_MAX_PAIRS];
+  } gpu_req;
 #endif
 
 #ifdef WAVE_TIMING
@@ -3070,8 +3088,7 @@ typedef struct
     char       *bseq_alloc;     //  freeable B-buffer (align.bseq may point at the shared cache)
     Overlap     ovl;            //  overlap record
 #ifdef GPU
-    gpu_ctx    *gctx;           //  per-thread GPU alignment context (-G)
-    int         gpu_loaded;     //  ctg pair currently resident on the GPU
+    int         aBase, bBase;   //  resident-genome base offsets of the current A/B contig
     unsigned short *gpu_tracebuf;  //  scratch for one GPU-emitted trace-point vector
 #endif
 #ifdef WAVE_TIMING
@@ -3080,8 +3097,48 @@ typedef struct
   } Contig_Bundle;
 
 #ifdef GPU
-//  -G forward-strand path: discover endpoints on the A100 (from a seed at the tube
-//  centre), then regenerate trace points on the CPU.  Fills pair->align.path.
+//  Flush scratch (only one flush runs at a time -- the queue serializes them -- so globals are
+//  safe).  Sized to the queue capacity at setup.
+static int  G_CAP = 0;
+static int *Fsa,*Fsb,*FaLo,*FaHi,*FbLo,*FbHi,*Fab,*Fae,*Fbb,*Fbe,*Fdf;      // discover in/out
+static int *Ttab,*Ttae,*Ttbb,*Ttbe,*Ttbase,*Tmap,*Ttlen; unsigned short *Ttout;  // trace in/out
+
+//  Run one batch of tubes: GPU discover_g (all), keep-filter, GPU trace_g (survivors).
+static void gpu_flush(void **reqs, void **results, int n, void *ctx)
+{ int i, m;
+  (void) results; (void) ctx;                 //  request buffers are also the result buffers
+  for (i = 0; i < n; i++)
+    { gpu_req *r = (gpu_req *) reqs[i];
+      Fsa[i]=r->sa; Fsb[i]=r->sb; FaLo[i]=r->aLo; FaHi[i]=r->aHi; FbLo[i]=r->bLo; FbHi[i]=r->bHi;
+    }
+  gpu_discover_batch_g(G_GPU,n,Fsa,Fsb,FaLo,FaHi,FbLo,FbHi,Fab,Fae,Fbb,Fbe,Fdf);
+  m = 0;
+  for (i = 0; i < n; i++)
+    { gpu_req *r = (gpu_req *) reqs[i];
+      int ab=Fab[i], ae=Fae[i], bb=Fbb[i], be=Fbe[i], df=Fdf[i];
+      int rlen=ae-ab, blen2=be-bb, drift=rlen-blen2;  if (drift<0) drift=-drift;
+      r->ab=ab; r->ae=ae; r->bb=bb; r->be=be; r->diffs=df; r->ok=0;
+      if (ae>ab && be>bb && ab>=r->aLo && ae<=r->aHi && bb>=r->bLo && be<=r->bHi &&
+          rlen>=ALIGN_MIN && ALIGN_RATE*rlen>=df && df<=rlen && drift<=512)
+        { Ttab[m]=ab; Ttae[m]=ae; Ttbb[m]=bb; Ttbe[m]=be; Ttbase[m]=r->aBase; Tmap[m]=i; m++; }
+    }
+  if (m > 0)
+    { gpu_trace_batch_g(G_GPU,m,Ttab,Ttae,Ttbb,Ttbe,Ttbase,TSPACE,Ttout,Ttlen);
+      for (i = 0; i < m; i++)
+        { gpu_req *r = (gpu_req *) reqs[Tmap[i]];
+          if (Ttlen[i] < 0) continue;         //  overflow -> ok stays 0 -> CPU fallback
+          { int p, d = 0;
+            unsigned short *t = Ttout + (size_t) i*FGA_TRACE_MAX_PAIRS;
+            for (p = 0; p < Ttlen[i]; p += 2) d += t[p];
+            r->diffs = d; r->tlen = Ttlen[i]; r->ok = 1;
+            memcpy(r->trace, t, (size_t) Ttlen[i]*sizeof(unsigned short));
+          }
+        }
+    }
+}
+
+//  -G forward-strand path: submit the tube to the batching queue (blocks until its batch runs
+//  on the GPU), then use the GPU endpoints+trace, or fall back to the exact CPU aligner.
 static void gpu_align_tube(Contig_Bundle *pair, int dgmin, int dgmax, int amid)
 { Alignment  *align = &(pair->align);
   Path       *path  = align->path;
@@ -3090,44 +3147,25 @@ static void gpu_align_tube(Contig_Bundle *pair, int dgmin, int dgmax, int amid)
   int dg = (dgmin + dgmax) / 2;
   int sa = (amid + dg) >> 1;
   int sb = (amid - dg) >> 1;
-  int ab, ae, bb, be, df;
-  int rlen, blen2, drift, ok;
+  gpu_req req;
 
-  //  Seed the GPU x-drop from the tube-centre anchor (sa,sb); verified to land inside the
-  //  true alignment for every tube (SD study).  Clamp to the resident contigs.
   if (sa < 0) sa = 0;  if (sa >= align->alen) sa = align->alen - 1;
   if (sb < 0) sb = 0;  if (sb >= align->blen) sb = align->blen - 1;
-  gpu_discover_batch(pair->gctx, 1, &sa, &sb, &ab, &ae, &bb, &be, &df);
+  req.sa = pair->aBase + sa;  req.sb = pair->bBase + sb;
+  req.aLo = pair->aBase;  req.aHi = pair->aBase + align->alen;
+  req.bLo = pair->bBase;  req.bHi = pair->bBase + align->blen;
+  req.aBase = pair->aBase;  req.ok = 0;
+  bq_submit(G_QUEUE, &req, &req);
 
-  //  Accept the GPU endpoints only if they are self-consistent (monotone, in-range, keep-
-  //  filter, drift within the aligner's band).  The x-drop matches FastGA on ~84% of tubes;
-  //  the rest (tandem-repeat / low-complexity) get the exact CPU aligner below.
-  rlen  = ae - ab;
-  blen2 = be - bb;
-  drift = rlen - blen2;  if (drift < 0) drift = -drift;
-  ok = (ae > ab && be > bb && ae <= align->alen && be <= align->blen &&
-        rlen >= ALIGN_MIN && ALIGN_RATE*rlen >= df && df <= rlen && drift <= 512);
-
-  if (ok)
-    { int tl = -1;
-      //  Emit the trace-point vector on the GPU (A2 gpu_trace_batch): one warp aligns the
-      //  rectangle [ab,ae]x[bb,be] within the resident contigs and returns (diff,delta-b)
-      //  panel pairs -- no CPU re-alignment.  Overflow / kernel error -> tl<0 -> CPU fallback.
-      if (gpu_trace_batch(pair->gctx, 1, &ab, &ae, &bb, &be, TSPACE,
-                          pair->gpu_tracebuf, &tl) || tl < 0)
-        ok = 0;
-      else
-        { int p, d = 0;
-          for (p = 0; p < tl; p += 2) d += pair->gpu_tracebuf[p];   //  Sigma diffs
-          path->abpos = ab; path->aepos = ae;
-          path->bbpos = bb; path->bepos = be;
-          path->diffs = d;
-          path->trace = (int *) pair->gpu_tracebuf;   //  uint16 pairs; Compress_TraceTo8 reads it
-          path->tlen  = tl;
-        }
+  if (req.ok)
+    { path->abpos = req.ab - pair->aBase;  path->aepos = req.ae - pair->aBase;
+      path->bbpos = req.bb - pair->bBase;  path->bepos = req.be - pair->bBase;
+      path->diffs = req.diffs;
+      memcpy(pair->gpu_tracebuf, req.trace, (size_t) req.tlen*sizeof(unsigned short));
+      path->trace = (int *) pair->gpu_tracebuf;
+      path->tlen  = req.tlen;
     }
-
-  if (!ok)                      //  exact CPU aligner for this tube (bit-identical to no -G)
+  else
     { if (Local_Alignment(align, work, spec, dgmin, dgmax, amid, -1, -1))
         Clean_Exit(1);
     }
@@ -3156,9 +3194,6 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
   Path       *path  = align->path;
   FILE       *ofile = pair->ofile;
   FILE       *tfile = pair->tfile;
-#endif
-#ifdef GPU
-  pair->gpu_loaded = 0;       //  (re)load this contig pair onto the GPU on first tube
 #endif
 #if defined(DEBUG_SEARCH) || defined(DEBUG_HIT)
   int         repgo;
@@ -3385,10 +3420,9 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
                         }
 #endif
 #ifdef GPU
-                      if (GPU_MODE && !comp && !pair->gpu_loaded)
-                        { gpu_load_seqs(pair->gctx,(unsigned char *) align->aseq,align->alen,
-                                                   (unsigned char *) align->bseq,align->blen);
-                          pair->gpu_loaded = 1;
+                      if (GPU_MODE)                 //  resident-genome base offsets of this pair
+                        { pair->aBase = GbaseA[ctg1];
+                          pair->bBase = GbaseB[ctg2];
                         }
 #endif
 
@@ -3962,13 +3996,12 @@ static void *search_seeds(void *args)
   pair->work = New_Work_Data();
   pair->spec = New_Align_Spec(1.-ALIGN_RATE,100,gdb1->freq,0);
 #ifdef GPU
-  pair->gctx = NULL;
   pair->gpu_tracebuf = NULL;
   if (GPU_MODE)
-    { pair->gctx = gpu_open();
-      pair->gpu_tracebuf = (unsigned short *) Malloc(FGA_TRACE_MAX_PAIRS*sizeof(unsigned short),
+    { pair->gpu_tracebuf = (unsigned short *) Malloc(FGA_TRACE_MAX_PAIRS*sizeof(unsigned short),
                                                      "GPU trace buffer");
       if (pair->gpu_tracebuf == NULL) Clean_Exit(1);
+      bq_register(G_QUEUE);       //  this worker will submit tubes to the shared batch queue
     }
 #endif
   if (pair->work == NULL || pair->spec == NULL)
@@ -4002,7 +4035,7 @@ static void *search_seeds(void *args)
 
   Free_Align_Spec(pair->spec);
 #ifdef GPU
-  if (GPU_MODE && pair->gctx) gpu_close(pair->gctx);
+  if (GPU_MODE) bq_deregister(G_QUEUE);
   if (pair->gpu_tracebuf) free(pair->gpu_tracebuf);
 #endif
   Free_Work_Data(pair->work);
@@ -4385,6 +4418,66 @@ static void free_bcache(void)
 }
 #endif
 
+#ifdef GPU
+//  Concatenate a genome's NUMERIC contigs into one host buffer (single cheap decompress pass)
+//  with a contig->base-offset table.  base[]/len[] are genome-relative.
+static char *build_resident_genome(GDB *gdb, int **baseOut, int **lenOut, long *totalOut)
+{ int  n = gdb->ncontig, c;
+  int *base = (int *) Malloc(sizeof(int)*(size_t)n,"resident base");
+  int *len  = (int *) Malloc(sizeof(int)*(size_t)n,"resident len");
+  long total = 0;
+  char *host;
+  if (base == NULL || len == NULL) Clean_Exit(1);
+  for (c = 0; c < n; c++)
+    { int L = (gdb->contigs[c].boff < 0) ? 0 : gdb->contigs[c].clen;
+      base[c] = (int) total;  len[c] = L;  total += (long) L + 1;   // +1 for the terminator
+    }
+  host = (char *) Malloc(total,"resident genome");
+  if (host == NULL) Clean_Exit(1);
+  for (c = 0; c < n; c++)
+    if (gdb->contigs[c].boff >= 0)
+      if (Get_Contig(gdb,c,NUMERIC,host+base[c]) == NULL) Clean_Exit(1);
+  *baseOut = base; *lenOut = len; *totalOut = total;
+  return host;
+}
+
+static void gpu_pipeline_setup(GDB *gdb1, GDB *gdb2)
+{ long  tA, tB;
+  char *hA, *hB;
+  int   i;
+
+  hA = build_resident_genome(gdb1,&GbaseA,&GlenA,&tA);
+  hB = build_resident_genome(gdb2,&GbaseB,&GlenB,&tB);
+  if (tA > 0x7fffffffL || tB > 0x7fffffffL)   //  genome-relative coords are int32 for now
+    { fprintf(stderr,"%s: -G resident genome exceeds 2Gbp (int32 coords); int64 support pending\n",
+                     Prog_Name);
+      Clean_Exit(1);
+    }
+  G_GPU = gpu_open();
+  gpu_load_seqs(G_GPU,(unsigned char *)hA,(int)tA,(unsigned char *)hB,(int)tB);
+  free(hA); free(hB);
+
+  G_CAP = 4*NTHREADS + 16;
+  { int **P[] = {&Fsa,&Fsb,&FaLo,&FaHi,&FbLo,&FbHi,&Fab,&Fae,&Fbb,&Fbe,&Fdf,
+                 &Ttab,&Ttae,&Ttbb,&Ttbe,&Ttbase,&Tmap,&Ttlen};
+    for (i = 0; i < (int)(sizeof(P)/sizeof(P[0])); i++)
+      { *P[i] = (int *) Malloc(sizeof(int)*(size_t)G_CAP,"flush scratch");
+        if (*P[i] == NULL) Clean_Exit(1);
+      }
+  }
+  Ttout = (unsigned short *) Malloc((size_t)G_CAP*FGA_TRACE_MAX_PAIRS*sizeof(unsigned short),"Ttout");
+  if (Ttout == NULL) Clean_Exit(1);
+  G_QUEUE = bq_create(G_CAP, NTHREADS, 500 /*us*/, gpu_flush, NULL);
+}
+
+static void gpu_pipeline_teardown(void)
+{ if (G_QUEUE) bq_destroy(G_QUEUE);
+  if (G_GPU)   gpu_close(G_GPU);
+  free(GbaseA); free(GlenA); free(GbaseB); free(GlenB);
+  G_QUEUE = NULL; G_GPU = NULL;
+}
+#endif
+
 static void pair_sort_search(GDB *gdb1, GDB *gdb2)
 { uint8 *sarray;
   int    swide;
@@ -4409,6 +4502,9 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
 
 #ifdef SEQ_CACHE
   build_bcache(gdb2);
+#endif
+#ifdef GPU
+  if (GPU_MODE) gpu_pipeline_setup(gdb1,gdb2);
 #endif
 
   unit[0] = N_Units;
@@ -4613,6 +4709,9 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
 
 #ifdef SEQ_CACHE
   free_bcache();
+#endif
+#ifdef GPU
+  if (GPU_MODE) gpu_pipeline_teardown();
 #endif
   free(panel);
   free(sarray);

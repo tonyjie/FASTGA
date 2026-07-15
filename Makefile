@@ -45,9 +45,9 @@ FastGA: FastGA.c libfastk.c libfastk.h GDB.c GDB.h RSDsort.c align.c align.h aln
 	$(CC) $(CFLAGS) -o FastGA FastGA.c RSDsort.c libfastk.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
 
 # GPU-accelerated FastGA (-G offloads forward-strand Local_Alignment to the A100)
-FastGA.gpu: FastGA.c RSDsort.c libfastk.c align.c GDB.c alncode.c gene_core.c ONElib.c gpu/fastga_gpu.cu gpu/fastga_gpu.h
+FastGA.gpu: FastGA.c RSDsort.c libfastk.c align.c GDB.c alncode.c gene_core.c ONElib.c gpu/fastga_gpu.cu gpu/fastga_gpu.h gpu/batch_queue.c gpu/batch_queue.h
 	nvcc -O3 -arch=sm_80 --default-stream per-thread -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
-	$(CC) $(CFLAGS) -DGPU -I. -o FastGA.gpu FastGA.c RSDsort.c libfastk.c align.c GDB.c alncode.c gene_core.c ONElib.c gpu/fastga_gpu.o -lpthread -lm -lz -L/usr/local/cuda/lib64 -lcudart -lstdc++
+	$(CC) $(CFLAGS) -DGPU -I. -o FastGA.gpu FastGA.c RSDsort.c libfastk.c align.c GDB.c alncode.c gene_core.c ONElib.c gpu/batch_queue.c gpu/fastga_gpu.o -lpthread -lm -lz -L/usr/local/cuda/lib64 -lcudart -lstdc++
 
 FastKS: FastKS.c libfastk.c libfastk.h GDB.c GDB.h RSDsort.c align.c align.h alncode.c alncode.h ONElib.c ONElib.h
 	$(CC) $(CFLAGS) -o FastKS FastKS.c RSDsort.c libfastk.c align.c GDB.c alncode.c gene_core.c ONElib.c -lpthread -lm -lz
