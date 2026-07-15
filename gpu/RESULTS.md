@@ -81,6 +81,32 @@ acceleration alone is therefore **Amdahl-capped near ~1.9×** on this pair. A bi
 also accelerating the seed radix-sort and output-merge (a whole-pipeline story), and/or a
 more divergent pair (chimp/mouse) where the wave is a larger share.
 
+## A3b batched pipeline — WORKS end-to-end, but batch-size-limited (2026-07-15)
+
+The dynamic-batching queue + resident-genome integration (FastGA.c `-G`) runs the whole align
+phase on the GPU and produces a valid `.1aln`:
+
+| EXAMPLE, T | records (vs CPU 323,569) | aligned bases (vs 632,119,471) | sort+align wall |
+|---|---:|---:|---:|
+| −G T=8  | 320,506 (**99.05%**) | 626,790,495 (**99.16%**) | 404 s |
+| −G T=64 | 320,506 (99.05%)     | 626,790,495 (99.16%)     | 259 s |
+| CPU T=8 | 323,569              | 632,119,471              | **16.7 s** |
+
+**Correctness: ✓** — the batched pipeline is functionally correct (99% coverage, all kernels
+in the loop). **Speed: ✗** — it is 15-24× *slower* than the CPU align phase, and the reason is
+architectural, not the kernels: the batching queue's batch is **capped at the live thread
+count** (each thread's tube-walk is sequential, so a thread has exactly one pending tube), and
+FastGA is practical to ~64 threads. Batch ~64 gives the trace kernel only ~10-20k aln/s
+(occupancy-starved); the offline benches need **batch ~2048 for the 15× win**. The queue also
+serializes CPU/GPU (the flush holds the mutex during the GPU call), and releasing it doesn't
+help — threads in the current batch are blocked awaiting their own result, so no larger batch
+accumulates.
+
+**Conclusion:** the queue-batching design cannot reach the batch sizes the GPU needs. The only
+path to batches of thousands is the **coroutine approach** — interleave many triple-sweeps so
+one thread has many independent tubes in flight at once — which was deferred as higher-risk.
+That, not the kernels, is the remaining work between "correct" and "faster than CPU".
+
 ## End-to-end (the honest bottom line)
 | | measured | note |
 |---|---|---|
