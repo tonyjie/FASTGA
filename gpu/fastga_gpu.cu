@@ -68,11 +68,16 @@ __global__ void disc_batch(const u8*A,int alen,const u8*B,int blen,int n,
 
 __global__ void trace_batch(const u8*A,const u8*B,int n,
                             const int*abA,const int*aeA,const int*bbA,const int*beA,
-                            int tspace, short*Wave, unsigned short*Out, int*Otlen, int max_pairs){
+                            const int*baseA, int tspace, short*Wave, unsigned short*Out,
+                            int*Otlen, int max_pairs){
   int warp = (blockIdx.x*blockDim.x + threadIdx.x) >> 5;
   int lane = threadIdx.x & 31;
   if (warp >= n) return;
   int abpos=abA[warp], aepos=aeA[warp], bbpos=bbA[warp], bepos=beA[warp];
+  //  Panels phase on CONTIG-relative A coords; abpos may be genome-relative (resident-genome
+  //  path) so subtract the contig base. baseA==NULL => already contig-relative (base 0).
+  int base = baseA ? baseA[warp] : 0;
+  int abc = abpos - base, aec = aepos - base;
   const u8*a = A + abpos; int aw = aepos-abpos;
   const u8*b = B + bbpos; int bw = bepos-bbpos;
   int drift = aw-bw;
@@ -107,13 +112,13 @@ __global__ void trace_batch(const u8*A,const u8*B,int n,
   if (lane!=0) return;
   if (result<0){ Otlen[warp]=-2; return; }
 
-  int p0=abpos/tspace;
-  int npanel=(aepos-1)/tspace - p0 + 1;
+  int p0=abc/tspace;
+  int npanel=(aec-1)/tspace - p0 + 1;
   if (npanel>TR_PCAP || 2*npanel>max_pairs){ Otlen[warp]=-3; return; }
   unsigned short *o = Out + (size_t)warp*max_pairs;
   for (int p=0;p<2*npanel;p++) o[p]=0;
-  #define TR_DBIN(al) o[2*(((abpos+(al))/tspace)-p0)]
-  #define TR_BBIN(al) o[2*(((abpos+(al))/tspace)-p0)+1]
+  #define TR_DBIN(al) o[2*(((abc+(al))/tspace)-p0)]
+  #define TR_BBIN(al) o[2*(((abc+(al))/tspace)-p0)+1]
   int d=result, k=drift;
   int x=(int)F[(size_t)d*TR_WCAP+(k-klo)];
   while (d>0){
@@ -192,6 +197,24 @@ __global__ void disc_batch_warp(const u8*A,int alen,const u8*B,int blen,int n,
   if(lane==0){ae[warp]=SA+fx;be[warp]=SB+fy;ab[warp]=SA-rx;bb[warp]=SB-ry;df[warp]=fd+rd;}
 }
 
+// Genome-resident discovery: A,B are whole genomes; each tube carries its contig bounds
+// [aLo,aHi)x[bLo,bHi) (genome-relative) so the x-drop can't run off a contig. Endpoints are
+// genome-relative. (A3b batched pipeline: all threads' tubes index one resident genome.)
+__global__ void disc_batch_warp_g(const u8*A,const u8*B,int n,
+                                  const int*sa,const int*sb,
+                                  const int*aLo,const int*aHi,const int*bLo,const int*bHi,
+                                  int*ab,int*ae,int*bb,int*be,int*df){
+  extern __shared__ short sh[];
+  int warp=(blockIdx.x*blockDim.x+threadIdx.x)>>5, lane=threadIdx.x&31, wib=threadIdx.x>>5;
+  if(warp>=n)return;
+  short*f=sh+(size_t)wib*(4*DW); short*M=f+2*DW;
+  int SA=sa[warp],SB=sb[warp],aL=aLo[warp],aH=aHi[warp],bL=bLo[warp],bH=bHi[warp];
+  int fx,fy,fd,rx,ry,rd;
+  extend_warp(A,SA,  +1,aH-SA,B,SB,  +1,bH-SB,f,M,lane,&fx,&fy,&fd);
+  extend_warp(A,SA-1,-1,SA-aL,B,SB-1,-1,SB-bL,f,M,lane,&rx,&ry,&rd);
+  if(lane==0){ae[warp]=SA+fx;be[warp]=SB+fy;ab[warp]=SA-rx;bb[warp]=SB-ry;df[warp]=fd+rd;}
+}
+
 // on-device 2-bit -> NUMERIC unpack: base[p] = (packed[p>>2] >> ((p&3)*2)) & 3
 // (byte-identical to gene_core.c Uncompress_Read). Eliminates the CPU decompression that
 // perf shows is 29% of the human align run, and shrinks the host->device copy 4x.
@@ -204,8 +227,9 @@ __global__ void unpack2bit(const u8* packed, u8* out, int len){
 struct gpu_ctx { u8 *dA,*dB; int alen,blen; size_t acap,bcap;
                  u8 *dPackA,*dPackB; size_t pcapA,pcapB;   // device 2-bit scratch
                  int *dsa,*dsb,*dab,*dae,*dbb,*dbe,*ddf; int ncap;
+                 int *daLo,*daHi,*dbLo,*dbHi;              // genome-resident disc bounds
                  // trace-emission scratch/buffers
-                 int *tab,*tae,*tbb,*tbe,*tOtlen; short *tWave; unsigned short *tOut;
+                 int *tab,*tae,*tbb,*tbe,*tOtlen,*dtBase; short *tWave; unsigned short *tOut;
                  int tncap, tchunkcap; };
 
 extern "C" gpu_ctx *gpu_open(void){
@@ -215,8 +239,9 @@ extern "C" void gpu_close(gpu_ctx *g){
   if(!g)return;
   if(g->dA)cudaFree(g->dA); if(g->dB)cudaFree(g->dB);
   if(g->dPackA)cudaFree(g->dPackA); if(g->dPackB)cudaFree(g->dPackB);
-  if(g->dsa){cudaFree(g->dsa);cudaFree(g->dsb);cudaFree(g->dab);cudaFree(g->dae);cudaFree(g->dbb);cudaFree(g->dbe);cudaFree(g->ddf);}
-  if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);}
+  if(g->dsa){cudaFree(g->dsa);cudaFree(g->dsb);cudaFree(g->dab);cudaFree(g->dae);cudaFree(g->dbb);cudaFree(g->dbe);cudaFree(g->ddf);
+             cudaFree(g->daLo);cudaFree(g->daHi);cudaFree(g->dbLo);cudaFree(g->dbHi);}
+  if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);cudaFree(g->dtBase);}
   if(g->tWave)cudaFree(g->tWave);
   free(g);
 }
@@ -245,10 +270,28 @@ extern "C" void gpu_load_seqs_2bit(gpu_ctx *g,const u8*packedA,int alen,const u8
 }
 static void ensure_n(gpu_ctx*g,int n){
   if(n<=g->ncap)return;
-  if(g->dsa){cudaFree(g->dsa);cudaFree(g->dsb);cudaFree(g->dab);cudaFree(g->dae);cudaFree(g->dbb);cudaFree(g->dbe);cudaFree(g->ddf);}
+  if(g->dsa){cudaFree(g->dsa);cudaFree(g->dsb);cudaFree(g->dab);cudaFree(g->dae);cudaFree(g->dbb);cudaFree(g->dbe);cudaFree(g->ddf);
+             cudaFree(g->daLo);cudaFree(g->daHi);cudaFree(g->dbLo);cudaFree(g->dbHi);}
   CK(cudaMalloc(&g->dsa,n*4));CK(cudaMalloc(&g->dsb,n*4));CK(cudaMalloc(&g->dab,n*4));
   CK(cudaMalloc(&g->dae,n*4));CK(cudaMalloc(&g->dbb,n*4));CK(cudaMalloc(&g->dbe,n*4));CK(cudaMalloc(&g->ddf,n*4));
+  CK(cudaMalloc(&g->daLo,n*4));CK(cudaMalloc(&g->daHi,n*4));CK(cudaMalloc(&g->dbLo,n*4));CK(cudaMalloc(&g->dbHi,n*4));
   g->ncap=n;
+}
+extern "C" int gpu_discover_batch_g(gpu_ctx*g,int n,const int*sa,const int*sb,
+                                    const int*aLo,const int*aHi,const int*bLo,const int*bHi,
+                                    int*ab,int*ae,int*bb,int*be,int*diffs){
+  ensure_n(g,n);
+  CK(cudaMemcpy(g->dsa,sa,n*4,cudaMemcpyHostToDevice));CK(cudaMemcpy(g->dsb,sb,n*4,cudaMemcpyHostToDevice));
+  CK(cudaMemcpy(g->daLo,aLo,n*4,cudaMemcpyHostToDevice));CK(cudaMemcpy(g->daHi,aHi,n*4,cudaMemcpyHostToDevice));
+  CK(cudaMemcpy(g->dbLo,bLo,n*4,cudaMemcpyHostToDevice));CK(cudaMemcpy(g->dbHi,bHi,n*4,cudaMemcpyHostToDevice));
+  int TPB=128, wpb=TPB/32, bl=(n+wpb-1)/wpb; size_t shmem=(size_t)wpb*4*DW*sizeof(short);
+  disc_batch_warp_g<<<bl,TPB,shmem>>>(g->dA,g->dB,n,g->dsa,g->dsb,g->daLo,g->daHi,g->dbLo,g->dbHi,
+                                      g->dab,g->dae,g->dbb,g->dbe,g->ddf);
+  if(cudaGetLastError()!=cudaSuccess||cudaDeviceSynchronize()!=cudaSuccess) return 1;
+  CK(cudaMemcpy(ab,g->dab,n*4,cudaMemcpyDeviceToHost));CK(cudaMemcpy(ae,g->dae,n*4,cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(bb,g->dbb,n*4,cudaMemcpyDeviceToHost));CK(cudaMemcpy(be,g->dbe,n*4,cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(diffs,g->ddf,n*4,cudaMemcpyDeviceToHost));
+  return 0;
 }
 extern "C" int gpu_discover_batch(gpu_ctx*g,int n,const int*sa,const int*sb,
                                   int*ab,int*ae,int*bb,int*be,int*diffs){
@@ -270,9 +313,9 @@ extern "C" int gpu_discover_batch(gpu_ctx*g,int n,const int*sa,const int*sb,
                           // on the A100 (bench). Raise for big batches if GPU memory allows.
 static void ensure_trace(gpu_ctx*g,int n){
   if(n>g->tncap){
-    if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);}
+    if(g->tab){cudaFree(g->tab);cudaFree(g->tae);cudaFree(g->tbb);cudaFree(g->tbe);cudaFree(g->tOtlen);cudaFree(g->tOut);cudaFree(g->dtBase);}
     CK(cudaMalloc(&g->tab,n*4));CK(cudaMalloc(&g->tae,n*4));CK(cudaMalloc(&g->tbb,n*4));CK(cudaMalloc(&g->tbe,n*4));
-    CK(cudaMalloc(&g->tOtlen,n*4));
+    CK(cudaMalloc(&g->tOtlen,n*4));CK(cudaMalloc(&g->dtBase,n*4));
     CK(cudaMalloc(&g->tOut,(size_t)n*FGA_TRACE_MAX_PAIRS*sizeof(unsigned short)));
     g->tncap=n;
   }
@@ -294,8 +337,30 @@ extern "C" int gpu_trace_batch(gpu_ctx*g,int n,
     int m=(n-c<TR_CHUNK)?n-c:TR_CHUNK;
     int tpb=128, blk=(m*32+tpb-1)/tpb;
     trace_batch<<<blk,tpb>>>(g->dA,g->dB,m,g->tab+c,g->tae+c,g->tbb+c,g->tbe+c,
-                             tspace,g->tWave,g->tOut+(size_t)c*FGA_TRACE_MAX_PAIRS,g->tOtlen+c,
+                             NULL,tspace,g->tWave,g->tOut+(size_t)c*FGA_TRACE_MAX_PAIRS,g->tOtlen+c,
                              FGA_TRACE_MAX_PAIRS);
+  }
+  if(cudaGetLastError()!=cudaSuccess||cudaDeviceSynchronize()!=cudaSuccess) return 1;
+  CK(cudaMemcpy(out_tlen,g->tOtlen,n*4,cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(out_trace,g->tOut,(size_t)n*FGA_TRACE_MAX_PAIRS*sizeof(unsigned short),cudaMemcpyDeviceToHost));
+  return 0;
+}
+// Genome-resident trace: endpoints ab/ae/bb/be are genome-relative; base[i] = A-contig base
+// offset (for contig-relative panel phasing).
+extern "C" int gpu_trace_batch_g(gpu_ctx*g,int n,
+        const int*ab,const int*ae,const int*bb,const int*be,const int*base,int tspace,
+        unsigned short*out_trace,int*out_tlen){
+  if(n<=0) return 0;
+  ensure_trace(g,n);
+  CK(cudaMemcpy(g->tab,ab,n*4,cudaMemcpyHostToDevice));CK(cudaMemcpy(g->tae,ae,n*4,cudaMemcpyHostToDevice));
+  CK(cudaMemcpy(g->tbb,bb,n*4,cudaMemcpyHostToDevice));CK(cudaMemcpy(g->tbe,be,n*4,cudaMemcpyHostToDevice));
+  CK(cudaMemcpy(g->dtBase,base,n*4,cudaMemcpyHostToDevice));
+  for(int c=0;c<n;c+=TR_CHUNK){
+    int m=(n-c<TR_CHUNK)?n-c:TR_CHUNK;
+    int tpb=128, blk=(m*32+tpb-1)/tpb;
+    trace_batch<<<blk,tpb>>>(g->dA,g->dB,m,g->tab+c,g->tae+c,g->tbb+c,g->tbe+c,
+                             g->dtBase+c,tspace,g->tWave,g->tOut+(size_t)c*FGA_TRACE_MAX_PAIRS,
+                             g->tOtlen+c,FGA_TRACE_MAX_PAIRS);
   }
   if(cudaGetLastError()!=cudaSuccess||cudaDeviceSynchronize()!=cudaSuccess) return 1;
   CK(cudaMemcpy(out_tlen,g->tOtlen,n*4,cudaMemcpyDeviceToHost));

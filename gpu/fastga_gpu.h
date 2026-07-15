@@ -52,6 +52,17 @@ int gpu_trace_batch(gpu_ctx *g, int n,
                     const int *ab, const int *ae, const int *bb, const int *be,
                     int tspace, unsigned short *out_trace, int *out_tlen);
 
+/* Genome-resident variants (A3b): A/B are whole genomes loaded via gpu_load_seqs_2bit; all
+ * coords are genome-relative. discover takes per-tube contig bounds [aLo,aHi)x[bLo,bHi) so the
+ * x-drop cannot cross a contig; trace takes per-tube base[i] = A-contig base offset for
+ * contig-relative panel phasing. */
+int gpu_discover_batch_g(gpu_ctx *g, int n, const int *sa, const int *sb,
+                         const int *aLo, const int *aHi, const int *bLo, const int *bHi,
+                         int *ab, int *ae, int *bb, int *be, int *diffs);
+int gpu_trace_batch_g(gpu_ctx *g, int n,
+                      const int *ab, const int *ae, const int *bb, const int *be,
+                      const int *base, int tspace, unsigned short *out_trace, int *out_tlen);
+
 #ifdef __cplusplus
 }
 #endif

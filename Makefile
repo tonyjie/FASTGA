@@ -153,3 +153,8 @@ decomp_bench: gpu/decomp_bench.cu
 # A3b batching-queue unit test (pure pthreads, no CUDA)
 batch_queue_test: gpu/batch_queue_test.c gpu/batch_queue.c gpu/batch_queue.h
 	$(CC) $(CFLAGS) -Igpu -o gpu/batch_queue_test gpu/batch_queue_test.c gpu/batch_queue.c -lpthread
+
+# A3b genome-resident kernel validation (discover_g / trace_g vs per-task)
+genome_resident_test: gpu/genome_resident_test.cu gpu/fastga_gpu.cu gpu/fastga_gpu.h gpu/disc_format.h gpu/trace_format.h
+	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
+	nvcc -O3 -arch=sm_80 -Igpu -o gpu/genome_resident_test gpu/genome_resident_test.cu gpu/fastga_gpu.o
