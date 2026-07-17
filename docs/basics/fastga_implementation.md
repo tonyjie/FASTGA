@@ -72,7 +72,7 @@ Two rules of thumb that explain the whole profile:
 > dictionary over ~3 billion positions is too big to sort in one shot, so GIXmake works in two
 > moves:
 > 1. **Scatter** (Phase A): walk the genome, keep only the "interesting" positions (*syncmers*,
->    ~⅓ of them), and toss each into one of many *bins* by its leading letters — like sorting mail
+>    ~40% of them), and toss each into one of many *bins* by its leading letters — like sorting mail
 >    into zip-code bins so no single pile is too big to sort in memory.
 > 2. **Sort each bin & write** (Phase B): sort each bin's words alphabetically, write it out as a
 >    `.ktab` file, and build a small "thumb-tab" index (the `.gix` stub) so lookups can jump.

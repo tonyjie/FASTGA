@@ -135,7 +135,7 @@ The pipeline has 4 major phases inside `FastGA.c`:
 
 ### Phase 1: Adaptive Seed Merge
 - Merges two sorted GIX indices in a single linear pass
-- For each k-mer (K=40, syncmer-filtered to ~50% of positions) in genome A, finds the longest prefix match in genome B's index — this is the "adaptamer"
+- For each k-mer (K=40, syncmer-filtered to ~40% of positions) in genome A, finds the longest prefix match in genome B's index — this is the "adaptamer"
 - If the k-mer occurs <= `-f` (default 10) times in genome B, emits seed position pairs
 - Seeds are written to temporary files partitioned by A-contig and strand (normal/complement)
 - This is cache-coherent: both indices are swept linearly, no random lookups
@@ -166,7 +166,7 @@ The pipeline has 4 major phases inside `FastGA.c`:
 - Supports random contig access without text parsing
 
 ### GIX (.gix + hidden files)
-- Truncated suffix array of syncmer-filtered K-mers (K=40, closed syncmer TMER=12/SMER=8, ~50% of positions kept)
+- Truncated suffix array of syncmer-filtered K-mers (K=40, closed syncmer TMER=12/SMER=8, **~40% of positions kept** — the minimal s-mer lands on one of 5 window ends, so 2/5; each kept position emits 2 entries (fwd+revcomp), so entries ≈ 0.81× the one-strand k-mer count, matching the `.81` constant at `GIXmake.c:2007`. The verbose `Sampled: ~74%` line counts **both strands** — it is not a per-position rate.)
 - Built by `GIXmake.c`: distribute (syncmer scan) → MSD radix sort (`MSDsort.c`) → compress/index. Sort array entry = `swide` bytes: LCP/marker byte + packed 40-mer (`KBYTES=10`) + position (`PostBytes`) + contig#/strand (`ContBytes`, high bit = reverse-complement).
 - **New GIX format (current `main`, what GIXmake now writes):**
   - Hidden partition files: `.<root>.ktab.<1..NPARTS>` only — the sorted position + contig fields are embedded **inside** the ktab entries (there is no separate `.post.*`).
@@ -229,18 +229,48 @@ Combined (Opt 1+3): peak disk ~66 GB (was 71 GB), sort+align disk ~7 GB (was ~64
 
 ### Documentation
 
-**Current (against new upstream FastGA, `main` @ upstream `ddeea32` + .gitignore):**
-- `docs/benchmark_thread_scaling_upstream.md` — Thread scaling study of the new upstream build (EXAMPLE dataset)
-- `docs/benchmark_thread_scaling_upstream/` — raw data (`results.tsv`), plot + driver scripts
+> Index last verified against disk 2026-07-17. Every path below exists; if you add or move a doc,
+> update this list. (It had drifted badly — the whole "Current" section pointed at files that had
+> been deleted, and `docs/basics/` + `docs/acceleration/` were missing entirely.)
+
+**Understanding the algorithm — start here:**
+- **[How and why FastGA works](https://claude.ai/code/artifact/2e20d5cf-bc55-448b-b05d-e3b2e212ebe8)**
+  (Artifact, 2026-07-17) — **the canonical explainer.** Consolidates everything below plus the C
+  source and the paper into one narrative: plain-language main flow, source-level detail in
+  optional "Deep dive" blocks. Includes a constants table (separating what the *paper* states from
+  *code-only* defaults) and a ledger of errors found in the older docs. **Where it and the older
+  docs disagree, it wins.**
+- `docs/basics/fastga_guide.md` — Educational ground-up guide (concepts, worked examples)
+- `docs/basics/fastga_implementation.md` — Implementation companion: per-stage steps, functions,
+  parallelism
+- `docs/basics/fastga_storage_and_memory.md` — Where storage and memory actually go
+
+**Hardware acceleration (GPU / FPGA):**
+- `docs/acceleration/gpu_fpga_opportunity.md` — Survey of accelerable kernels + prior art
+- `docs/acceleration/whole_pipeline_thesis.md` — Whole-pipeline acceleration thesis; measured
+  per-stage/kernel profiles (`-DPROFILE_STAGES` / `-DPROFILE_KERNEL`)
+- `docs/acceleration/kernel_profile/` — Raw profile logs (human / chimp / mouse)
+- `gpu/` — GPU work: `PHASE_A_PLAN.md`, `A3b_design.md`, `A3b_feasibility.md`, `RESULTS.md`,
+  `PROFILE.md`, `INTEGRATION.md`
+
+**Benchmarks (current):**
+- `docs/benchmark_baseline/` — Baseline perf + storage profiling (`example/`, `human/` subdirs)
+- `docs/benchmark_matrix/` — Bottleneck profiling matrix: `README.md`, `datasets_inventory.md`,
+  driver scripts (`run_pair.sh`, `run_divergence_axis.sh`, `aggregate_matrix.py`), `divergence/` data
+- `docs/agent_optimization/` — Agent-driven optimization report + `plan_improvement.md`
+  (⚠ the `fused-scan-once` branch holds a **superset** of `plan_improvement.md`, with measured results)
+- `docs/superpowers/` — Specs and plans (profiling-matrix design)
 
 **Archived (based on the OLD upstream; the storage-optimization effort — Opt1/3/5):**
 - `docs/old_archive/benchmark_performance.md` — Thread scaling and per-phase runtime breakdown (old build)
 - `docs/old_archive/benchmark_storage.md` — File sizes, storage timeline, per-phase file inventory
 - `docs/old_archive/benchmark_instructions.md` — How to reproduce all benchmarks and evaluate optimizations
-- `docs/old_archive/fastga_guide.md` — Educational guide (describes original baseline code)
 - `docs/old_archive/storage_optimization/` — Optimization efforts, plans, and results
   - `README.md` — Overview index with status table for all optimizations
   - `optimization_plan.md` — Full plan with 6 identified opportunities
   - `optimization_template.md` — Standard template for each new optimization
-  - `opt1_early_gix_deletion.md` — Optimization 1: results and verification
+  - `opt1_early_gix_deletion.md`, `opt3_eliminate_mask_byte.md`, `opt5_ktab_compression.md`
 - `benchmarks/` — Scripts for profiling and evaluation (old storage-audit tooling)
+
+**Other:** `docs/report/` (Ashir's optimization report PDF), `docs/slides/` (deep-dive + Triton
+seq-align decks, figure scripts)

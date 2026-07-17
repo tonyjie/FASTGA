@@ -2,6 +2,13 @@
 
 This guide explains FastGA from the ground up — what it does, why it's designed the way it is, and what happens to your data at every step.
 
+> **Start here instead if you're new to FastGA:** the consolidated explainer
+> [**"How and why FastGA works"**](https://claude.ai/code/artifact/2e20d5cf-bc55-448b-b05d-e3b2e212ebe8)
+> (2026-07-17) reconciles this guide, `fastga_implementation.md`, the notes scattered across all
+> nine branches, the C source, and the paper into one narrative — plain-language main flow with
+> the source-level detail tucked into optional "Deep dive" blocks. It is the canonical account of
+> the algorithm and its rationale; where it and this guide disagree, **it wins.**
+>
 > For the implementation-level companion — the concrete steps inside each stage, the functions
 > that run them, and exactly how each step is parallelized — see
 > [`fastga_implementation.md`](fastga_implementation.md).
@@ -628,31 +635,53 @@ Thanks to Step 4a's sort, seeds from the same alignment are now adjacent. Chaini
 
 A chain grows by accumulating seeds one at a time. The current chain extends as long as each next seed satisfies:
 - Same pair of contigs
-- Same or adjacent diagonal buckets (within 128 bases in diagonal space, i.e., 2 × BUCK_WIDTH)
-- Anti-diagonal gap ≤ 1000 bases from the previous seed (the `-s` parameter) — no large gap along the alignment
+- Same or adjacent diagonal buckets — an effective band of **128 diagonals** (2 × BUCK_WIDTH 64;
+  buckets are 64 wide, and adjacent pairs are merged and chained together)
+- Gap along the alignment ≤ **1000 bases** = 2000 anti-diagonal units (the `-s` parameter)
 
 When a seed violates any of these, the current chain ends and a new chain begins.
 
-A chain can contain **any number of seeds** — 2, 5, 20, or more. The chain's **coverage** is the sum of the match lengths (`plen` values from Stage 3) of all its seeds. Only chains with coverage ≥ 85 bases (the `-c` parameter) trigger alignment:
+A chain can contain **any number of seeds** — 2, 5, 20, or more. The chain's **coverage** is the
+**union** of the anti-diagonal stretches its seeds cover. Only chains covering ≥ 85 bases (the
+`-c` parameter) trigger alignment.
+
+> **Two things to get right here** (both were wrong in earlier versions of this guide):
+>
+> 1. **Coverage is a union, not a sum.** Overlapping seeds do *not* each contribute their full
+>    length — the code accumulates covered intervals and merges overlaps
+>    (`FastGA.c:3356-3361`). A sum would let a cluster of overlapping seeds fake a high score.
+> 2. **`-c 85` is two-sided: 85 bases in *both* genomes.** The chainer works natively in
+>    **anti-diagonal units, which are 2× base-pair units** (along a diagonal, one matched base
+>    advances `anti = a+b` by two). So `-c 85` is stored as `CHAIN_MIN = 170` and `-s 1000` as
+>    `CHAIN_BREAK = 2000` (`FastGA.c:4834-4835`) — pre-doubled literals, so the inner loop never
+>    divides. FastGA's own usage text says it: *"minimum seed chain coverage in both genomes."*
+>
+> Below, the anti-diagonal figures are in **anti units**; divide by 2 for base pairs.
 
 ```
 Chain with 5 seeds (all in the same diagonal band):
+                                          seed covers 2*plen anti units
+  Seed 0: anti=3000, plen=38  ─┐          [3000, 3076)
+  Seed 1: anti=3078, plen=40   │  gap=2   [3078, 3158)   ✓ (< 2000)
+  Seed 2: anti=3159, plen=35   │  gap=1   [3159, 3229)   ✓
+  Seed 3: anti=3300, plen=40   │  gap=71  [3300, 3380)   ✓
+  Seed 4: anti=3502, plen=36  ─┘  gap=122 [3502, 3574)   ✓
 
-  Seed 0: anti-diag=3000, plen=38  ─┐
-  Seed 1: anti-diag=3078, plen=40   │  gap=78   ✓ (< 1000)
-  Seed 2: anti-diag=3159, plen=35   │  gap=81   ✓
-  Seed 3: anti-diag=3300, plen=40   │  gap=141  ✓
-  Seed 4: anti-diag=3502, plen=36  ─┘  gap=202  ✓
+  (gap = distance from the END of the coverage so far to the next seed)
 
-  Total coverage: 38+40+35+40+36 = 189 bases  ✓ (≥ 85)
+  Union of covered stretches: 76+80+70+80+72 = 378 anti units  ✓ (≥ CHAIN_MIN 170)
+                            = 189 bases in each genome         ✓ (≥ -c 85)
   → Trigger alignment over this region
+
+  Note: here no two seeds overlap, so the union happens to equal the sum. Had
+  seeds 1 and 2 overlapped, the shared stretch would be counted ONCE, not twice.
 
 Chain with 1 seed:
 
-  Seed X: anti-diag=8000, plen=40  ─┐
-  (next seed is gap > 1000)         ─┘
+  Seed X: anti=8000, plen=40  ─┐  covers [8000, 8080) = 80 anti units
+  (next seed is > 2000 anti units away, i.e. > 1000 bases)
 
-  Total coverage: 40 bases  ✗ (< 85)
+  Coverage: 80 anti units = 40 bases  ✗ (< CHAIN_MIN 170 / -c 85)
   → Discard — not enough evidence
 ```
 
