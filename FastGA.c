@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <sys/resource.h>
 #include <stdatomic.h>
+#include <time.h>
 
 #include "libfastk.h"
 #include "GDB.h"
@@ -122,6 +123,8 @@ static int   DBYTE;      // # of bytes for a pair diagonal or anti-diagonal
 
 static int    NCONTS;    //  # of A contigs
 static int    NPARTS;    //  # of panels A-contigs divided into
+static uint8 *ACACHE[2]; //  v3b: all A-contigs decompressed once, [0]=forward [1]=complement
+static int64 *AOFF;      //  v3b: byte offset of A-contig i within ACACHE[*]
 static int    ESHIFT;    //  shift to extract P1-contig # from a post
 
 static int   *Select;    //  Select[bucket] = thread file for bucket
@@ -3178,12 +3181,11 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
                       //  Fetch contig sequences if not already loaded
 #ifdef CALL_ALIGNER
                       if (ctg1 != ovl->aread)
-                        { if (Get_Contig(pair->gdb1,ctg1,NUMERIC,align->aseq) == NULL)
-                            Clean_Exit(1);
+                        { memcpy(align->aseq,ACACHE[comp]+AOFF[ctg1],alen);  // v3b: from shared A-cache
+                          align->aseq[-1]   = 4;   //  sentinels Get_Contig/Uncompress_Read would set
+                          align->aseq[alen] = 4;
                           align->alen = alen;
                           ovl->aread  = ctg1;
-                          if (comp)
-                            Complement_Seq(align->aseq,align->alen);
 #ifdef DEBUG_HIT
                           if (repgo)
                             printf("Loading A = %d%c\n",ctg1,comp?'c':'n');
@@ -4313,6 +4315,37 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
       unlink(Catenate(SORT_PATH,"/",ALGN_PAIR,Numbered_Suffix(".",p,".las")));
     }
 
+  //  v3b: decompress every A-contig once into a shared read-only cache (both strand orientations),
+  //  so the aligner never re-decompresses/re-complements A under the global interleaved pool.
+  { int    c;
+    int64  off = 0;
+    char  *tmp;
+    struct timespec _t0, _t1;
+
+    clock_gettime(CLOCK_MONOTONIC,&_t0);
+    AOFF = Malloc((NCONTS+1)*sizeof(int64),"A-cache offsets");
+    if (AOFF == NULL) Clean_Exit(1);
+    for (c = 0; c < NCONTS; c++)
+      { AOFF[c] = off; off += gdb1->contigs[c].clen; }
+    AOFF[NCONTS] = off;
+    ACACHE[0] = Malloc(off,"A-cache forward");
+    ACACHE[1] = Malloc(off,"A-cache complement");
+    tmp       = New_Contig_Buffer(gdb1);   //  has the -1/len sentinel room Get_Contig writes into
+    if (ACACHE[0] == NULL || ACACHE[1] == NULL || tmp == NULL) Clean_Exit(1);
+    for (c = 0; c < NCONTS; c++)
+      { int64 len = gdb1->contigs[c].clen;
+        if (Get_Contig(gdb1,c,NUMERIC,tmp) == NULL) Clean_Exit(1);
+        memcpy(ACACHE[0]+AOFF[c],tmp,len);   //  store DATA only (packed, no sentinels)
+        Complement_Seq(tmp,len);
+        memcpy(ACACHE[1]+AOFF[c],tmp,len);   //  reverse-complement, DATA only
+      }
+    free(tmp-1);                             //  New_Contig_Buffer returned base+1
+    clock_gettime(CLOCK_MONOTONIC,&_t1);
+    if (VERBOSE)
+      fprintf(stderr,"\n    [v3b] A-cache: %.1f GB x2 built in %.1fs\n",off/1e9,
+              (_t1.tv_sec-_t0.tv_sec)+(_t1.tv_nsec-_t0.tv_nsec)*1e-9);
+  }
+
   { int64  njobs = 0, jcap = 4096, passoff = 0, n0 = 0;
     Job   *jobs  = Malloc(jcap*sizeof(Job),"Allocating job list");
     Job   *jobd;
@@ -4435,6 +4468,9 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
   free(panel);
   free(sarray);
   free(passbuf);
+  free(ACACHE[0]);
+  free(ACACHE[1]);
+  free(AOFF);
   for (p = 0; p < NTHREADS; p++)
     fclose(tarm[p].tfile);
   for (p = 1; p < NTHREADS; p++)
