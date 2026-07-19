@@ -21,6 +21,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <sys/resource.h>
+#include <stdatomic.h>
 
 #include "libfastk.h"
 #include "GDB.h"
@@ -3694,6 +3695,44 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
 }
 
 
+//  Work-pool (v1): one job = one contig-pair (A-contig ctg1 x B-contig jcrnt, seed range [beg,end)).
+//  build_jobs scans a part's already-sorted seed array once and records every contig-pair boundary
+//  (mirrors search_seeds' enumeration but records instead of aligning).
+
+typedef struct { uint8 *beg, *end; int icrnt; int64 jcrnt; } Job;
+
+static Job *build_jobs(uint8 *sarray, int64 *panel, int nconts, int swide, int64 *njobs)
+{ int    foffs = swide - JCONT;
+  int64  cap = 4096, n = 0;
+  Job   *jobs = Malloc(cap*sizeof(Job),"Allocating job list");
+  uint8 *x = sarray, *e, *b;
+  int    icrnt;
+  int64  jcrnt = 0;
+  uint8 *_jc = (uint8 *) (&jcrnt);
+
+  if (jobs == NULL) Clean_Exit(1);
+  for (icrnt = 0; icrnt < nconts; icrnt++)
+    { e = x + panel[icrnt];
+      if (e > x)
+        { memcpy(_jc,x+foffs,JCONT);
+          b = x;
+          for (x += swide; x < e; x += swide)
+            if (memcmp(_jc,x+foffs,JCONT))
+              { if (n == cap)
+                  { cap *= 2; jobs = Realloc(jobs,cap*sizeof(Job),"job list"); if (jobs == NULL) Clean_Exit(1); }
+                jobs[n].beg = b; jobs[n].end = x; jobs[n].icrnt = icrnt; jobs[n].jcrnt = jcrnt; n += 1;
+                memcpy(_jc,x+foffs,JCONT);
+                b = x;
+              }
+          if (n == cap)
+            { cap *= 2; jobs = Realloc(jobs,cap*sizeof(Job),"job list"); if (jobs == NULL) Clean_Exit(1); }
+          jobs[n].beg = b; jobs[n].end = x; jobs[n].icrnt = icrnt; jobs[n].jcrnt = jcrnt; n += 1;
+        }
+    }
+  *njobs = n;
+  return jobs;
+}
+
 typedef struct
   { int       tid;
     int       swide;
@@ -3711,6 +3750,9 @@ typedef struct
     int64     nlcov;
     int64     nmemo;
     int       tmaxl;
+    Job              *jobs;    //  v1 work-pool: shared job list (all threads)
+    int64             njobs;
+    _Atomic int64    *next;    //  shared atomic cursor into jobs[]
   } TP;
 
 static void *search_seeds(void *args)
@@ -3768,21 +3810,16 @@ static void *search_seeds(void *args)
   pair->nlcov = 0;
   pair->nmemo = 0;
 
-  x = sarray + range->off;
-  for (icrnt = beg; icrnt < end; icrnt++)
-    { e = x + panel[icrnt];
-      if (e > x)
-        { memcpy(_jcrnt,x+foffs,JCONT);
-          b = x;
-          for (x += swide; x < e; x += swide)
-            if (memcmp(_jcrnt,x+foffs,JCONT))
-              { align_contigs(b,x,swide,icrnt,(int) jcrnt,pair);
-                memcpy(_jcrnt,x+foffs,JCONT);
-                b = x;
-              }
-          align_contigs(b,x,swide,icrnt,jcrnt,pair);
-        }
-    }
+  //  v1 work-pool: contig-pairs are pre-enumerated into parm->jobs; all threads pull via one
+  //  shared atomic cursor.  (Replaces the static per-thread contig-range walk.)
+  (void) beg; (void) end; (void) foffs; (void) panel; (void) sarray; (void) range;
+  (void) icrnt; (void) jcrnt; (void) _jcrnt; (void) x; (void) e; (void) b;
+  { int64 k;
+    while ((k = atomic_fetch_add_explicit(parm->next,(int64) 1,memory_order_relaxed)) < parm->njobs)
+      { Job *J = &parm->jobs[k];
+        align_contigs(J->beg,J->end,swide,J->icrnt,(int) J->jcrnt,pair);
+      }
+  }
 
   Free_Align_Spec(pair->spec);
   Free_Work_Data(pair->work);
@@ -4329,19 +4366,31 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
           fflush(stderr);
         }
 
-      for (p = 0; p < nused; p++)
+      for (p = 0; p < NTHREADS; p++)
         tarm[p].comp = u;
 
+      //  v1 work-pool: enumerate this part's contig-pairs into a shared job list, then run
+      //  NTHREADS workers that pull jobs via one shared atomic cursor.  (nused, from rmsd_sort's
+      //  static split, is no longer used to bound the launch.)
+      { int64 njobs; Job *jobs;
+        _Atomic int64 nextjob = 0;
+
+        jobs = build_jobs(sarray,panel,NCONTS,swide,&njobs);
+        for (p = 0; p < NTHREADS; p++)
+          { tarm[p].jobs = jobs; tarm[p].njobs = njobs; tarm[p].next = &nextjob; }
+
 #if defined(DEBUG_SORT) || defined(DEBUG_SEARCH) || defined(DEBUG_HIT) || defined(DEBUG_ALIGN)
-      for (p = 0; p < nused; p++)
-        search_seeds(tarm+p);
+        for (p = 0; p < NTHREADS; p++)
+          search_seeds(tarm+p);
 #else
-      for (p = 1; p < nused; p++)
-        pthread_create(threads+p,NULL,search_seeds,tarm+p);
-      search_seeds(tarm);
-      for (p = 1; p < nused; p++)
-        pthread_join(threads[p],NULL);
+        for (p = 1; p < NTHREADS; p++)
+          pthread_create(threads+p,NULL,search_seeds,tarm+p);
+        search_seeds(tarm);
+        for (p = 1; p < NTHREADS; p++)
+          pthread_join(threads[p],NULL);
 #endif
+        free(jobs);
+      }
     }
 
   free(panel);
