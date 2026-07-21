@@ -4243,14 +4243,14 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
       }
 
     swide  = 2*DBYTE + JCONT + 2;
-    sarray = Malloc((nelmax+1)*swide,"Sort Array");
     panel  = Malloc(NCONTS*sizeof(int64),"Bucket Array");
-    //  v2: passbuf holds ALL of one pass's sorted seeds resident at once, so the whole pass's
-    //  contig-pairs can share a single work-pool (no per-part barrier).  ~8-11 GB; trivial here.
-    (void) passmax;   //  v3a holds BOTH passes resident, so size to the grand total
+    //  v3c: reimport+sort go DIRECTLY into passbuf slots (no separate ~nelmax sort buffer, no memcpy).
+    //  passbuf holds all seeds of BOTH passes resident so the global pool sees every contig-pair.
+    (void) nelmax; (void) passmax;
     passbuf = Malloc((gtot+1)*swide,"Pass Array");
-    if (sarray == NULL || panel == NULL || passbuf == NULL)
+    if (panel == NULL || passbuf == NULL)
       Clean_Exit(1);
+    sarray = passbuf;   //  alias: keeps the DEBUG_SORT print + field assignments valid
   }
 
 #ifdef LOAD_SEQS
@@ -4335,6 +4335,7 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
           rarm[p].buck = nu[p].buck;
           rarm[p].comp = u;
           rarm[p].inum = nu[p].inum;
+          rarm[p].sarr = passbuf + passoff;   //  v3c: reimport this part straight into its passbuf slot
         }
 
 #ifdef DEBUG_SORT
@@ -4384,16 +4385,14 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
             fflush(stderr);
           }
 
-        nused = rmsd_sort(sarray,nels,swide,swide/*-2*/,NCONTS,panel,NTHREADS,range);
+        nused = rmsd_sort(passbuf+passoff,nels,swide,swide/*-2*/,NCONTS,panel,NTHREADS,range);
 
 #ifdef DEBUG_SORT
-        print_seeds(sarray,swide,range,panel,gdb1,gdb2,u);
+        print_seeds(passbuf+passoff,swide,range,panel,gdb1,gdb2,u);
 #endif
       }
 
-      //  v2: keep this part's sorted seeds resident (copy into the pass-wide buffer) and record
-      //  its contig-pairs into the pass's shared job list -- instead of aligning right away.
-      memcpy(passbuf+passoff,sarray,nels*swide);
+      //  v3c: seeds are already sorted in place in passbuf -> just record contig-pairs (no memcpy).
       build_jobs(passbuf+passoff,panel,NCONTS,swide,u,&jobs,&jcap,&njobs);
       passoff += nels*swide;
      }
@@ -4433,8 +4432,7 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
   }
 
   free(panel);
-  free(sarray);
-  free(passbuf);
+  free(passbuf);   //  v3c: sarray is now an alias of passbuf -- freed once here
   for (p = 0; p < NTHREADS; p++)
     fclose(tarm[p].tfile);
   for (p = 1; p < NTHREADS; p++)
