@@ -21,6 +21,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <sys/resource.h>
+#include <stdatomic.h>
 
 #include "libfastk.h"
 #include "GDB.h"
@@ -3694,6 +3695,46 @@ static void align_contigs(uint8 *beg, uint8 *end, int swide, int ctg1, int ctg2,
 }
 
 
+//  Work-pool (v1): one job = one contig-pair (A-contig ctg1 x B-contig jcrnt, seed range [beg,end)).
+//  build_jobs scans a part's already-sorted seed array once and records every contig-pair boundary
+//  (mirrors search_seeds' enumeration but records instead of aligning).
+
+typedef struct { uint8 *beg, *end; int icrnt, comp; int64 jcrnt; } Job;
+
+//  Append this (sub)array's contig-pairs to a caller-managed dynamic job list
+//  (jobs_io/cap_io/n_io grown in place), so many parts can accumulate into one pass-wide pool.
+
+static void build_jobs(uint8 *sarray, int64 *panel, int nconts, int swide, int comp,
+                       Job **jobs_io, int64 *cap_io, int64 *n_io)
+{ int    foffs = swide - JCONT;
+  int64  cap = *cap_io, n = *n_io;
+  Job   *jobs = *jobs_io;
+  uint8 *x = sarray, *e, *b;
+  int    icrnt;
+  int64  jcrnt = 0;
+  uint8 *_jc = (uint8 *) (&jcrnt);
+
+  for (icrnt = 0; icrnt < nconts; icrnt++)
+    { e = x + panel[icrnt];
+      if (e > x)
+        { memcpy(_jc,x+foffs,JCONT);
+          b = x;
+          for (x += swide; x < e; x += swide)
+            if (memcmp(_jc,x+foffs,JCONT))
+              { if (n == cap)
+                  { cap *= 2; jobs = Realloc(jobs,cap*sizeof(Job),"job list"); if (jobs == NULL) Clean_Exit(1); }
+                jobs[n].beg = b; jobs[n].end = x; jobs[n].icrnt = icrnt; jobs[n].jcrnt = jcrnt; jobs[n].comp = comp; n += 1;
+                memcpy(_jc,x+foffs,JCONT);
+                b = x;
+              }
+          if (n == cap)
+            { cap *= 2; jobs = Realloc(jobs,cap*sizeof(Job),"job list"); if (jobs == NULL) Clean_Exit(1); }
+          jobs[n].beg = b; jobs[n].end = x; jobs[n].icrnt = icrnt; jobs[n].jcrnt = jcrnt; jobs[n].comp = comp; n += 1;
+        }
+    }
+  *jobs_io = jobs; *cap_io = cap; *n_io = n;
+}
+
 typedef struct
   { int       tid;
     int       swide;
@@ -3711,6 +3752,9 @@ typedef struct
     int64     nlcov;
     int64     nmemo;
     int       tmaxl;
+    Job              *jobs;    //  v1 work-pool: shared job list (all threads)
+    int64             njobs;
+    _Atomic int64    *next;    //  shared atomic cursor into jobs[]
   } TP;
 
 static void *search_seeds(void *args)
@@ -3768,21 +3812,26 @@ static void *search_seeds(void *args)
   pair->nlcov = 0;
   pair->nmemo = 0;
 
-  x = sarray + range->off;
-  for (icrnt = beg; icrnt < end; icrnt++)
-    { e = x + panel[icrnt];
-      if (e > x)
-        { memcpy(_jcrnt,x+foffs,JCONT);
-          b = x;
-          for (x += swide; x < e; x += swide)
-            if (memcmp(_jcrnt,x+foffs,JCONT))
-              { align_contigs(b,x,swide,icrnt,(int) jcrnt,pair);
-                memcpy(_jcrnt,x+foffs,JCONT);
-                b = x;
-              }
-          align_contigs(b,x,swide,icrnt,jcrnt,pair);
-        }
-    }
+  //  v1 work-pool: contig-pairs are pre-enumerated into parm->jobs; all threads pull via one
+  //  shared atomic cursor.  (Replaces the static per-thread contig-range walk.)
+  (void) beg; (void) end; (void) foffs; (void) panel; (void) sarray; (void) range;
+  (void) icrnt; (void) jcrnt; (void) _jcrnt; (void) x; (void) e; (void) b;
+  { int64 k;
+    int    lastcomp = -1;
+    while ((k = atomic_fetch_add_explicit(parm->next,(int64) 1,memory_order_relaxed)) < parm->njobs)
+      { Job *J = &parm->jobs[k];
+        if (J->comp != lastcomp)     //  v3a: this job's strand differs from the last -> reset
+          { if (J->comp)             //  the pair's strand flags and force A/B reload in the
+              { pair->ovl.flags = COMP_FLAG; pair->align.flags = ACOMP_FLAG; }   //  new orientation
+            else
+              { pair->ovl.flags = 0; pair->align.flags = 0; }
+            pair->ovl.aread = -1;
+            pair->ovl.bread = -1;
+            lastcomp = J->comp;
+          }
+        align_contigs(J->beg,J->end,swide,J->icrnt,(int) J->jcrnt,pair);
+      }
+  }
 
   Free_Align_Spec(pair->spec);
   Free_Work_Data(pair->work);
@@ -4133,7 +4182,7 @@ static int la_merge(TP *parm)
 }
 
 static void pair_sort_search(GDB *gdb1, GDB *gdb2)
-{ uint8 *sarray;
+{ uint8 *sarray, *passbuf;
   int    swide;
   int64  nels;
 
@@ -4157,11 +4206,14 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
   unit[0] = N_Units;
   unit[1] = C_Units;
 
-  { int64 cum, nelmax;
+  { int64 cum, nelmax, ptot, passmax, gtot;
 
     nelmax = 0;
+    passmax = 0;
+    gtot = 0;
     for (u = 0; u < 2; u++)
       { cum = 0;
+        ptot = 0;
         nu = unit[u];
 
         for (j = 0; j < NCONTS; j++)
@@ -4172,9 +4224,13 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
             if (j+1 == NCONTS || Select[j] != Select[j+1])
               { if (cum > nelmax)
                   nelmax = cum;
+                ptot += cum;      //  running total of seeds in this whole pass
+                gtot += cum;      //  grand total across BOTH passes (v3a: all resident at once)
                 cum = 0;
               }
           }
+        if (ptot > passmax)       //  biggest single-pass total (all parts of one orientation)
+          passmax = ptot;
 
         for (j = NCONTS-1; j >= 0; j--)
           { for (i = NTHREADS-1; i >= 1; i--)
@@ -4187,10 +4243,14 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
       }
 
     swide  = 2*DBYTE + JCONT + 2;
-    sarray = Malloc((nelmax+1)*swide,"Sort Array");
     panel  = Malloc(NCONTS*sizeof(int64),"Bucket Array");
-    if (sarray == NULL || panel == NULL)
+    //  v3c: reimport+sort go DIRECTLY into passbuf slots (no separate ~nelmax sort buffer, no memcpy).
+    //  passbuf holds all seeds of BOTH passes resident so the global pool sees every contig-pair.
+    (void) nelmax; (void) passmax;
+    passbuf = Malloc((gtot+1)*swide,"Pass Array");
+    if (panel == NULL || passbuf == NULL)
       Clean_Exit(1);
+    sarray = passbuf;   //  alias: keeps the DEBUG_SORT print + field assignments valid
   }
 
 #ifdef LOAD_SEQS
@@ -4253,8 +4313,15 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
       unlink(Catenate(SORT_PATH,"/",ALGN_PAIR,Numbered_Suffix(".",p,".las")));
     }
 
-  for (u = 0; u < 2; u++)
-   for (i = 0; i < NPARTS; i++)
+  { int64  njobs = 0, jcap = 4096, passoff = 0, n0 = 0;
+    Job   *jobs  = Malloc(jcap*sizeof(Job),"Allocating job list");
+    Job   *jobd;
+    _Atomic int64 nextjob = 0;
+
+    if (jobs == NULL) Clean_Exit(1);
+
+    for (u = 0; u < 2; u++)
+     { for (i = 0; i < NPARTS; i++)
     { nu = unit[u] + i*NTHREADS;
 
       if (VERBOSE)
@@ -4268,6 +4335,7 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
           rarm[p].buck = nu[p].buck;
           rarm[p].comp = u;
           rarm[p].inum = nu[p].inum;
+          rarm[p].sarr = passbuf + passoff;   //  v3c: reimport this part straight into its passbuf slot
         }
 
 #ifdef DEBUG_SORT
@@ -4317,35 +4385,54 @@ static void pair_sort_search(GDB *gdb1, GDB *gdb2)
             fflush(stderr);
           }
 
-        nused = rmsd_sort(sarray,nels,swide,swide/*-2*/,NCONTS,panel,NTHREADS,range);
+        nused = rmsd_sort(passbuf+passoff,nels,swide,swide/*-2*/,NCONTS,panel,NTHREADS,range);
 
 #ifdef DEBUG_SORT
-        print_seeds(sarray,swide,range,panel,gdb1,gdb2,u);
+        print_seeds(passbuf+passoff,swide,range,panel,gdb1,gdb2,u);
 #endif
       }
 
-      if (VERBOSE)
-        { fprintf(stderr,"\r    Searching seeds for part %d",u*NPARTS+i+1);
-          fflush(stderr);
+      //  v3c: seeds are already sorted in place in passbuf -> just record contig-pairs (no memcpy).
+      build_jobs(passbuf+passoff,panel,NCONTS,swide,u,&jobs,&jcap,&njobs);
+      passoff += nels*swide;
+     }
+       if (u == 0) n0 = njobs;
+     }
+
+    //  v3a: interleave the two strand passes (comp0 = [0,n0), comp1 = [n0,njobs)) so their heavy
+    //  contig-pairs run concurrently, then drain EVERYTHING from one global pool -- no pass barrier.
+    jobd = Malloc(njobs*sizeof(Job),"Allocating job list");
+    if (jobd == NULL) Clean_Exit(1);
+    { int64 a = 0, b = n0, w = 0;
+      while (a < n0 || b < njobs)
+        { if (a < n0)    jobd[w++] = jobs[a++];
+          if (b < njobs) jobd[w++] = jobs[b++];
         }
-
-      for (p = 0; p < nused; p++)
-        tarm[p].comp = u;
-
-#if defined(DEBUG_SORT) || defined(DEBUG_SEARCH) || defined(DEBUG_HIT) || defined(DEBUG_ALIGN)
-      for (p = 0; p < nused; p++)
-        search_seeds(tarm+p);
-#else
-      for (p = 1; p < nused; p++)
-        pthread_create(threads+p,NULL,search_seeds,tarm+p);
-      search_seeds(tarm);
-      for (p = 1; p < nused; p++)
-        pthread_join(threads[p],NULL);
-#endif
     }
 
+    if (VERBOSE)
+      { fprintf(stderr,"\r    Searching seeds (global pool, %lld jobs)      ",(long long) njobs);
+        fflush(stderr);
+      }
+
+    for (p = 0; p < NTHREADS; p++)
+      { tarm[p].comp = 0; tarm[p].jobs = jobd; tarm[p].njobs = njobs; tarm[p].next = &nextjob; }
+
+#if defined(DEBUG_SORT) || defined(DEBUG_SEARCH) || defined(DEBUG_HIT) || defined(DEBUG_ALIGN)
+    for (p = 0; p < NTHREADS; p++)
+      search_seeds(tarm+p);
+#else
+    for (p = 1; p < NTHREADS; p++)
+      pthread_create(threads+p,NULL,search_seeds,tarm+p);
+    search_seeds(tarm);
+    for (p = 1; p < NTHREADS; p++)
+      pthread_join(threads[p],NULL);
+#endif
+    free(jobs); free(jobd);
+  }
+
   free(panel);
-  free(sarray);
+  free(passbuf);   //  v3c: sarray is now an alias of passbuf -- freed once here
   for (p = 0; p < NTHREADS; p++)
     fclose(tarm[p].tfile);
   for (p = 1; p < NTHREADS; p++)
