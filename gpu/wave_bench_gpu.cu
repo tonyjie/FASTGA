@@ -28,6 +28,7 @@
 #include <cstring>
 #include <cstdint>
 #include <ctime>
+#include <vector>
 #include <cuda_runtime.h>
 
 // GDB.h/align.h/alncode.h/gene_core.h have no extern "C" guards of their own (they are
@@ -188,7 +189,35 @@ static int pick_samples(int n, int *out)
   return m;
 }
 
-static char *Usage = "<in:path>[.1aln] <in:path.seeds> [--selftest] [--fwd-validate] [--discover-validate]";
+//  ---- Task 7: (band,depth) stratification buckets -- IDENTICAL to wave_bench_cpu.c's, so
+//  GPU and CPU per-bucket aln/s are directly comparable (the fit map). ----
+#define G_NBAND 5
+#define G_NDEPTH 5
+static long G_BAND_HI[G_NBAND]   = {   8,   32,  128,   512, INT32_MAX };
+static long G_DEPTH_HI[G_NDEPTH] = {  10,   50,  200,  1000, INT32_MAX };
+
+static int gbucket_of(long v, long *hi, int n)
+{ int i;
+  for (i = 0; i < n; i++)
+    if (v <= hi[i])
+      return i;
+  return n-1;
+}
+
+//  derive the .cpuref path from a .seeds path: strip ".seeds", append ".cpuref"
+static void cpuref_path_from_seeds(const char *seeds_path, char *out, size_t outsz)
+{ size_t L = strlen(seeds_path);
+  const char *suf = ".seeds";  size_t sl = strlen(suf);
+  if (L > sl && strcmp(seeds_path+L-sl,suf) == 0)
+    { memcpy(out,seeds_path,L-sl); out[L-sl] = 0; }
+  else
+    { memcpy(out,seeds_path,L); out[L] = 0; }
+  strncat(out,".cpuref",outsz-strlen(out)-1);
+}
+
+static char *Usage =
+  "<in:path>[.1aln] <in:path.seeds> [--selftest] [--fwd-validate] [--discover-validate]\n"
+  "       [--stage1-fit] [--cpu-1core=<aln/s>] [--cpu-32core=<aln/s>]";
 
 int main(int argc, char *argv[])
 { GDB      _gdb1, *gdb1 = &_gdb1;
@@ -200,6 +229,11 @@ int main(int argc, char *argv[])
   int       selftest = 0;
   int       fwdvalidate = 0;
   int       discvalidate = 0;
+  int       stage1fit = 0;
+  //  defaults = Task 3's measured, unpinned numbers; override with --cpu-1core=/--cpu-32core=
+  //  after a fresh pinned re-run (Task 7 brief: "re-confirm").
+  double    cpu_1core_alnps  = 1212.0;
+  double    cpu_32core_alnps = 37782.9;
 
   if (argc < 3)
     { fprintf(stderr,"Usage: %s %s\n",argv[0],Usage); return 1; }
@@ -208,6 +242,9 @@ int main(int argc, char *argv[])
       { if (strcmp(argv[i],"--selftest") == 0)          selftest = 1;
         if (strcmp(argv[i],"--fwd-validate") == 0)      fwdvalidate = 1;
         if (strcmp(argv[i],"--discover-validate") == 0) discvalidate = 1;
+        if (strcmp(argv[i],"--stage1-fit") == 0)        stage1fit = 1;
+        if (strncmp(argv[i],"--cpu-1core=",12) == 0)    cpu_1core_alnps  = atof(argv[i]+12);
+        if (strncmp(argv[i],"--cpu-32core=",13) == 0)   cpu_32core_alnps = atof(argv[i]+13);
       }
   }
 
@@ -591,6 +628,208 @@ int main(int argc, char *argv[])
                 printf("  GATE: same-score>=95%% %s ; depth-ratio in[0.97,1.05] %s => %s\n",
                        gate_ss?"PASS":"FAIL", gate_dr?"PASS":"FAIL",
                        (gate_ss && gate_dr)?"PASS":"FAIL");
+
+                free(WS); free(gAb); free(gAe); free(gBb); free(gBe); free(gDf);
+                free(tab); free(scr); free(ref);
+              }
+          }
+      }
+
+    //  ---- Task 7 --stage1-fit: THE headline benchmark -- full-distribution GPU-vs-CPU (both
+    //  timing bases), the per-(band,depth) fit map, and the occupancy-based mechanism
+    //  decomposition (concurrent warps vs the CPU's 32 cores). Self-contained: loads its own
+    //  .cpuref (does not require --discover-validate to have also been passed).
+
+    if (stage1fit)
+      { char cpuref_path[4096];
+        cpuref_path_from_seeds(argv[2],cpuref_path,sizeof(cpuref_path));
+
+        FILE *cf = fopen(cpuref_path,"rb");
+        CpuRefHeader ch;
+        if (cf == NULL || fread(&ch,sizeof(ch),1,cf) != 1 || ch.magic != WAVE_CPUREF_MAGIC)
+          { fprintf(stderr,"%s: --stage1-fit: cannot open/parse cpuref %s (run wave_bench_cpu first)\n",
+                    argv[0],cpuref_path);
+            if (cf) fclose(cf);
+          }
+        else if ((int) ch.nrecs != N)
+          { fprintf(stderr,"%s: --stage1-fit: cpuref has %u recs, .seeds has %d -- mismatch\n",
+                    argv[0],ch.nrecs,N);
+            fclose(cf);
+          }
+        else
+          { CpuRefRec *ref = (CpuRefRec *) malloc((size_t) N * sizeof(CpuRefRec));
+            if (ref == NULL || fread(ref,sizeof(CpuRefRec),(size_t) N,cf) != (size_t) N)
+              { fprintf(stderr,"%s: --stage1-fit: short read of %d cpuref recs\n",argv[0],N); if(cf) fclose(cf); }
+            else
+              { fclose(cf);
+
+                wave_seed *WS = (wave_seed *) malloc((size_t) N * sizeof(wave_seed));
+                int *gAb=(int*)malloc((size_t)N*sizeof(int)), *gAe=(int*)malloc((size_t)N*sizeof(int));
+                int *gBb=(int*)malloc((size_t)N*sizeof(int)), *gBe=(int*)malloc((size_t)N*sizeof(int));
+                int *gDf=(int*)malloc((size_t)N*sizeof(int));
+                int i;
+                for (i = 0; i < N; i++)
+                  { SeedRec *s = &S[i];
+                    WS[i].aread = s->aread;  WS[i].bread = s->bread;
+                    WS[i].alen  = s->alen;   WS[i].blen  = s->blen;
+                    WS[i].anti  = s->seed_anti; WS[i].diag = s->seed_diag;
+                    WS[i].comp  = (s->flags & 0x1) ? 1 : 0;
+                  }
+
+                int16_t *tab = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+                int16_t *scr = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+                int path_ave = build_trim_tables(gdb1->freq,0.7,tab,scr);
+
+                printf("\n--stage1-fit: FULL distribution, %d seeds, path_ave=%d, cpuref=%s\n",
+                       N,path_ave,cpuref_path);
+
+                //  ---- mechanism decomposition: occupancy -> concurrent warps ----
+                int maxBlocksFwd=0, maxBlocksRev=0, smCount=0;
+                wave_query_occupancy(&maxBlocksFwd,&maxBlocksRev,&smCount);
+                int warpsPerSM = maxBlocksFwd < maxBlocksRev ? maxBlocksFwd : maxBlocksRev;
+                long concurrentWarps = (long) warpsPerSM * smCount;
+                printf("\noccupancy: forward_sweep_warp %d blocks/SM, reverse_sweep_warp %d blocks/SM"
+                       " (block=32 threads=1 warp), %d SMs -> concurrent warps = min(%d,%d)*%d = %ld\n",
+                       maxBlocksFwd,maxBlocksRev,smCount,maxBlocksFwd,maxBlocksRev,smCount,concurrentWarps);
+
+                //  ---- headline: full-distribution, CUDA-event timed, best-of-N, both bases ----
+                #define STAGE1_NREPS 5
+                float h2d_ms[STAGE1_NREPS], ker_ms[STAGE1_NREPS], d2h_ms[STAGE1_NREPS];
+                int rep;
+                for (rep = 0; rep < STAGE1_NREPS; rep++)
+                  { if (wave_discover_batch_timed(g,N,WS,tab,scr,path_ave,gAb,gAe,gBb,gBe,gDf,
+                                                   &h2d_ms[rep],&ker_ms[rep],&d2h_ms[rep]) != 0)
+                      fprintf(stderr,"%s: wave_discover_batch_timed failed on rep %d\n",argv[0],rep);
+                  }
+                float best_ker = ker_ms[0], best_tot = h2d_ms[0]+ker_ms[0]+d2h_ms[0];
+                int   best_tot_rep = 0;
+                for (rep = 1; rep < STAGE1_NREPS; rep++)
+                  { if (ker_ms[rep] < best_ker) best_ker = ker_ms[rep];
+                    float tot = h2d_ms[rep]+ker_ms[rep]+d2h_ms[rep];
+                    if (tot < best_tot) { best_tot = tot; best_tot_rep = rep; }
+                  }
+                double gpu_alnps_i  = N / (best_ker/1000.0);    // basis (i): kernel-only (best single component across reps)
+                double gpu_alnps_ii = N / (best_tot/1000.0);    // basis (ii): +per-batch H2D/D2H (best single REP's total)
+
+                printf("\nGPU wave_discover_batch, full %d seeds, best-of-%d CUDA-event timing:\n",
+                       N,STAGE1_NREPS);
+                printf("  basis (i)  wave-engine/kernel-only : %7.1f ms  (%9.1f seeds/s)  "
+                       "[genome H2D was one-time, reported above, NOT included]\n",
+                       best_ker, gpu_alnps_i);
+                printf("  basis (ii) realistic (+seed H2D+result D2H): %7.1f ms  (%9.1f seeds/s)  "
+                       "(rep %d: h2d=%.2fms kernel=%.1fms d2h=%.2fms)\n",
+                       best_tot, gpu_alnps_ii, best_tot_rep,
+                       h2d_ms[best_tot_rep], ker_ms[best_tot_rep], d2h_ms[best_tot_rep]);
+
+                //  ---- correctness re-check vs .cpuref (mirrors --discover-validate's gate) ----
+                long comparable=0, overflow=0, samescore=0;
+                double ratio_sum=0; long ratio_n=0;
+                for (i = 0; i < N; i++)
+                  { if (gDf[i] == -2) { overflow++; continue; }
+                    comparable++;
+                    if (gDf[i] == ref[i].diffs) samescore++;
+                    if (ref[i].diffs > 0) { ratio_sum += (double) gDf[i] / ref[i].diffs; ratio_n++; }
+                  }
+                double ss_pct = comparable ? 100.0*samescore/comparable : 0.0;
+                double ratio_mn = ratio_n ? ratio_sum/ratio_n : 0.0;
+                printf("\ncorrectness re-check (matches --discover-validate's gate): same-score %ld/%ld"
+                       " (%.3f%%), depth-ratio %.4f, band-overflow %ld\n",
+                       samescore,comparable,ss_pct,ratio_mn,overflow);
+
+                //  ---- fit map: bucket every comparable seed by the GPU's OWN (band,depth),
+                //  same buckets as wave_bench_cpu.c, then re-run wave_discover_batch_timed on
+                //  each bucket's subset (best-of-3) to get a directly comparable per-bucket
+                //  GPU aln/s table (kernel-only basis, matching the CPU table's pure-compute
+                //  methodology). ----
+                std::vector<int> bktIdx[G_NBAND][G_NDEPTH];
+                for (i = 0; i < N; i++)
+                  { if (gDf[i] == -2) continue;
+                    long band  = labs((long)(gAe[i]-gAb[i]) - (long)(gBe[i]-gBb[i]));
+                    long depth = gDf[i];
+                    int bb = gbucket_of(band,G_BAND_HI,G_NBAND);
+                    int db = gbucket_of(depth,G_DEPTH_HI,G_NDEPTH);
+                    bktIdx[bb][db].push_back(i);
+                  }
+
+                #define STAGE1_BREPS 3
+                double bkt_alnps[G_NBAND][G_NDEPTH];
+                long   bkt_n[G_NBAND][G_NDEPTH];
+                { int bb, db;
+                  for (bb = 0; bb < G_NBAND; bb++)
+                    for (db = 0; db < G_NDEPTH; db++)
+                      { std::vector<int> &idx = bktIdx[bb][db];
+                        long cnt = (long) idx.size();
+                        bkt_n[bb][db] = cnt;
+                        if (cnt == 0) { bkt_alnps[bb][db] = 0; continue; }
+
+                        wave_seed *sub = (wave_seed *) malloc((size_t) cnt * sizeof(wave_seed));
+                        int *sab=(int*)malloc((size_t)cnt*sizeof(int)), *sae=(int*)malloc((size_t)cnt*sizeof(int));
+                        int *sbb=(int*)malloc((size_t)cnt*sizeof(int)), *sbe=(int*)malloc((size_t)cnt*sizeof(int));
+                        int *sdf=(int*)malloc((size_t)cnt*sizeof(int));
+                        long k;
+                        for (k = 0; k < cnt; k++) sub[k] = WS[idx[k]];
+
+                        float bh[STAGE1_BREPS], bk[STAGE1_BREPS], bd[STAGE1_BREPS];
+                        int r;
+                        for (r = 0; r < STAGE1_BREPS; r++)
+                          wave_discover_batch_timed(g,(int) cnt,sub,tab,scr,path_ave,
+                                                     sab,sae,sbb,sbe,sdf,&bh[r],&bk[r],&bd[r]);
+                        float bestk = bk[0];
+                        for (r = 1; r < STAGE1_BREPS; r++) if (bk[r] < bestk) bestk = bk[r];
+                        bkt_alnps[bb][db] = cnt / (bestk/1000.0);
+
+                        free(sub); free(sab); free(sae); free(sbb); free(sbe); free(sdf);
+                      }
+                }
+
+                printf("\nfit map: GPU aln/s (kernel-only basis), same (band,depth) buckets as "
+                       "wave_bench_cpu.c\n");
+                printf("%14s","depth\\band");
+                { int bb;
+                  for (bb=0; bb<G_NBAND; bb++)
+                    printf("  <=%-8ld", G_BAND_HI[bb]==INT32_MAX?999999999L:G_BAND_HI[bb]);
+                  printf("\n");
+                }
+                { int db;
+                  for (db=0; db<G_NDEPTH; db++)
+                    { printf("%12s<=%-1ld", "", G_DEPTH_HI[db]==INT32_MAX?999999999L:G_DEPTH_HI[db]);
+                      int bb;
+                      for (bb=0; bb<G_NBAND; bb++)
+                        { if (bkt_n[bb][db] > 0)
+                            printf("  %10.1f", bkt_alnps[bb][db]);
+                          else
+                            printf("  %10s", "-");
+                        }
+                      printf("   (n=");
+                      long tot=0; for (bb=0; bb<G_NBAND; bb++) tot += bkt_n[bb][db];
+                      printf("%ld)%s\n", tot, db==G_NDEPTH-1 ? "   <-- DIAGNOSTIC (deep tail), NOT the headline" : "");
+                    }
+                }
+
+                //  ---- mechanism decomposition: per-warp vs per-core ----
+                double gpu_per_warp = concurrentWarps > 0 ? gpu_alnps_i / concurrentWarps : 0.0;
+                printf("\nmechanism decomposition (basis (i), kernel-only):\n");
+                printf("  GPU: %.1f aln/s aggregate / %ld concurrent warps = %.4f aln/s per warp\n",
+                       gpu_alnps_i, concurrentWarps, gpu_per_warp);
+                printf("  CPU: %.1f aln/s per core (1-thread measured)\n", cpu_1core_alnps);
+                printf("  per-core / per-warp = %.1fx  (%ld warps at %.4f aln/s/warp vs 32 cores at "
+                       "%.1f aln/s/core is how the aggregate ratio arises: many-but-slow vs few-but-fast)\n",
+                       gpu_per_warp>0 ? cpu_1core_alnps/gpu_per_warp : 0.0, concurrentWarps, gpu_per_warp,
+                       cpu_1core_alnps);
+
+                //  ---- final headline summary ----
+                printf("\n=== HEADLINE: full distribution, %d seeds (GPU vs CPU) ===\n",N);
+                printf("  GPU basis (i)  kernel-only : %10.1f seeds/s\n", gpu_alnps_i);
+                printf("  GPU basis (ii) realistic   : %10.1f seeds/s\n", gpu_alnps_ii);
+                printf("  CPU 1-core                 : %10.1f aln/s\n", cpu_1core_alnps);
+                printf("  CPU 32-core                : %10.1f aln/s\n", cpu_32core_alnps);
+                printf("  speedup vs 1-core : basis(i) %6.2fx   basis(ii) %6.2fx\n",
+                       gpu_alnps_i/cpu_1core_alnps, gpu_alnps_ii/cpu_1core_alnps);
+                printf("  speedup vs 32-core: basis(i) %6.2fx   basis(ii) %6.2fx\n",
+                       gpu_alnps_i/cpu_32core_alnps, gpu_alnps_ii/cpu_32core_alnps);
+                printf("  CAVEAT: this Stage-1 comparison is discovery (wave sweep: endpoints+diffs)"
+                       " ONLY -- no trace-points -- whereas CPU Local_Alignment ALSO emits trace in the"
+                       " same pass, so this slightly favors the GPU. Trace-inclusive: Stage 2 (Tasks 8-9).\n");
 
                 free(WS); free(gAb); free(gAe); free(gBb); free(gBe); free(gDf);
                 free(tab); free(scr); free(ref);

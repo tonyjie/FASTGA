@@ -697,3 +697,134 @@ extern "C" int wave_discover_batch(wave_ctx *g, int n, const wave_seed *seeds,
   cudaFree(dV); cudaFree(dT); cudaFree(dM); cudaFree(dC);
   return 0;
 }
+
+/*******************************************************************************************
+ *
+ *  Task 7: CUDA-event-timed discovery + occupancy readout.  Body is wave_discover_batch's
+ *  above, unchanged, with three cudaEvent windows dropped in around exactly the phases the
+ *  Task 7 brief asks to separate (per-batch seed H2D / kernel-only / result D2H). The tiny
+ *  one-time TABLE/SCORE upload is deliberately OUTSIDE the timed windows (a real deployment
+ *  loads it once, like the genome) so it cannot inflate either reported basis.
+ *
+ *******************************************************************************************/
+
+extern "C" int wave_discover_batch_timed(wave_ctx *g, int n, const wave_seed *seeds,
+                        const int16_t *table, const int16_t *score, int path_ave,
+                        int *ab, int *ae, int *bb, int *be, int *diffs,
+                        float *ms_h2d, float *ms_kernel, float *ms_d2h)
+{ if (g == NULL || n <= 0) return 0;
+
+  wave_seed *dSeeds = NULL;
+  int   *dAe=NULL, *dBe=NULL, *dFd=NULL;
+  int   *dAb=NULL, *dBb=NULL, *dRd=NULL;
+  short *dTab=NULL, *dScr=NULL;
+  int   *dV=NULL, *dM=NULL; BVEC *dT=NULL; unsigned char *dC=NULL;
+
+  int pool = n < WV_POOL ? n : WV_POOL;
+  size_t vtm = (size_t) pool * 2 * WV_SPAN;
+
+  CK(cudaMalloc(&dSeeds,(size_t) n * sizeof(wave_seed)));
+  CK(cudaMalloc(&dAe,(size_t) n * sizeof(int)));
+  CK(cudaMalloc(&dBe,(size_t) n * sizeof(int)));
+  CK(cudaMalloc(&dFd,(size_t) n * sizeof(int)));
+  CK(cudaMalloc(&dAb,(size_t) n * sizeof(int)));
+  CK(cudaMalloc(&dBb,(size_t) n * sizeof(int)));
+  CK(cudaMalloc(&dRd,(size_t) n * sizeof(int)));
+  CK(cudaMalloc(&dTab,(size_t)(TRIM_MASK+1) * sizeof(short)));
+  CK(cudaMalloc(&dScr,(size_t)(TRIM_MASK+1) * sizeof(short)));
+  CK(cudaMalloc(&dV, vtm * sizeof(int)));
+  CK(cudaMalloc(&dT, vtm * sizeof(BVEC)));
+  CK(cudaMalloc(&dM, vtm * sizeof(int)));
+  CK(cudaMalloc(&dC,(size_t) pool * WV_SPAN * sizeof(unsigned char)));
+  if (dSeeds==NULL||dAe==NULL||dBe==NULL||dFd==NULL||dAb==NULL||dBb==NULL||dRd==NULL||
+      dTab==NULL||dScr==NULL||dV==NULL||dT==NULL||dM==NULL||dC==NULL)
+    { fprintf(stderr,"wave_discover_batch_timed: device alloc failed\n"); return -1; }
+
+  //  one-time-in-a-real-deployment tables -- outside the timed windows, see header comment
+  CK(cudaMemcpy(dTab,table,(size_t)(TRIM_MASK+1) * sizeof(short),cudaMemcpyHostToDevice));
+  CK(cudaMemcpy(dScr,score,(size_t)(TRIM_MASK+1) * sizeof(short),cudaMemcpyHostToDevice));
+
+  cudaEvent_t e0,e1,e2,e3;
+  cudaEventCreate(&e0); cudaEventCreate(&e1); cudaEventCreate(&e2); cudaEventCreate(&e3);
+
+  //  ---- window 1: per-batch seed H2D ----
+  cudaEventRecord(e0);
+  CK(cudaMemcpy(dSeeds,seeds,(size_t) n * sizeof(wave_seed),cudaMemcpyHostToDevice));
+  cudaEventRecord(e1);
+
+  //  ---- window 2: kernel-only (both sweeps) ----
+  forward_sweep_warp<<<pool,32>>>(g->dA,g->dAbase,g->dBfwd,g->dBrev,g->dBbase,
+        n,dSeeds,dAe,dBe,dFd,dV,dT,dM,dC,dTab,dScr,path_ave);
+  reverse_sweep_warp<<<pool,32>>>(g->dA,g->dAbase,g->dBfwd,g->dBrev,g->dBbase,
+        n,dSeeds,dAb,dBb,dRd,dV,dT,dM,dC,dTab,dScr,path_ave);
+  cudaEventRecord(e2);
+
+  cudaError_t err = cudaGetLastError();
+  if (err == cudaSuccess) err = cudaEventSynchronize(e2);
+  if (err != cudaSuccess)
+    { fprintf(stderr,"wave_discover_batch_timed: kernel error: %s\n",cudaGetErrorString(err));
+      cudaEventDestroy(e0); cudaEventDestroy(e1); cudaEventDestroy(e2); cudaEventDestroy(e3);
+      cudaFree(dSeeds); cudaFree(dAe); cudaFree(dBe); cudaFree(dFd);
+      cudaFree(dAb); cudaFree(dBb); cudaFree(dRd);
+      cudaFree(dTab); cudaFree(dScr);
+      cudaFree(dV); cudaFree(dT); cudaFree(dM); cudaFree(dC);
+      return -1;
+    }
+
+  int *hFd = (int *) malloc((size_t) n * sizeof(int));
+  int *hRd = (int *) malloc((size_t) n * sizeof(int));
+  if (hFd==NULL || hRd==NULL)
+    { fprintf(stderr,"wave_discover_batch_timed: host alloc failed\n"); return -1; }
+
+  //  ---- window 3: result D2H (all 6 result arrays) ----
+  cudaEventRecord(e2);   // re-mark start of D2H precisely at kernel-end (already synced above)
+  CK(cudaMemcpy(ae, dAe,(size_t) n * sizeof(int),cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(be, dBe,(size_t) n * sizeof(int),cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(hFd,dFd,(size_t) n * sizeof(int),cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(ab, dAb,(size_t) n * sizeof(int),cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(bb, dBb,(size_t) n * sizeof(int),cudaMemcpyDeviceToHost));
+  CK(cudaMemcpy(hRd,dRd,(size_t) n * sizeof(int),cudaMemcpyDeviceToHost));
+  cudaEventRecord(e3);
+  cudaEventSynchronize(e3);
+
+  float t_h2d=0, t_kernel=0, t_d2h=0;
+  cudaEventElapsedTime(&t_h2d,   e0, e1);
+  cudaEventElapsedTime(&t_kernel,e1, e2);
+  cudaEventElapsedTime(&t_d2h,   e2, e3);
+  if (ms_h2d)    *ms_h2d    = t_h2d;
+  if (ms_kernel) *ms_kernel = t_kernel;
+  if (ms_d2h)    *ms_d2h    = t_d2h;
+
+  cudaEventDestroy(e0); cudaEventDestroy(e1); cudaEventDestroy(e2); cudaEventDestroy(e3);
+
+  //  combine: diffs = fdiff + rdiff (align.c:1453); overflow in EITHER sweep marks -2
+  for (int i = 0; i < n; i++)
+    { if (hFd[i] == -2 || hRd[i] == -2)
+        { ab[i]=ae[i]=bb[i]=be[i]=diffs[i] = -2; }
+      else
+        diffs[i] = hFd[i] + hRd[i];
+    }
+
+  free(hFd); free(hRd);
+  cudaFree(dSeeds); cudaFree(dAe); cudaFree(dBe); cudaFree(dFd);
+  cudaFree(dAb); cudaFree(dBb); cudaFree(dRd);
+  cudaFree(dTab); cudaFree(dScr);
+  cudaFree(dV); cudaFree(dT); cudaFree(dM); cudaFree(dC);
+  return 0;
+}
+
+/*  Task 7: occupancy readout for the mechanism decomposition -- see wave_kernel.h contract. */
+extern "C" void wave_query_occupancy(int *maxBlocksFwd, int *maxBlocksRev, int *smCount)
+{ int dev = 0;
+  cudaDeviceProp prop;
+
+  cudaGetDevice(&dev);
+  cudaGetDeviceProperties(&prop,dev);
+  *smCount = prop.multiProcessorCount;
+
+  int mbf = 0, mbr = 0;
+  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&mbf,forward_sweep_warp,32,0);
+  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&mbr,reverse_sweep_warp,32,0);
+  *maxBlocksFwd = mbf;
+  *maxBlocksRev = mbr;
+}

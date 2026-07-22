@@ -116,6 +116,29 @@ int wave_discover_batch(wave_ctx *g, int n, const wave_seed *seeds,
                         const int16_t *table, const int16_t *score, int path_ave,
                         int *ab, int *ae, int *bb, int *be, int *diffs);
 
+/* Task 7: same contract/output as wave_discover_batch, but CUDA-event-timed with the phases
+ * split so the benchmark can report BOTH honest bases: (i) kernel-only ("wave-engine, genome
+ * resident") = ms_kernel alone; (ii) "realistic" = ms_h2d + ms_kernel + ms_d2h (the one-time
+ * genome upload is NOT included -- it already happened in wave_load_genomes and is reported
+ * separately by the caller). ms_h2d times ONLY the per-batch `seeds` H2D copy; ms_kernel times
+ * ONLY the forward+reverse kernel launches; ms_d2h times ONLY the 6 result-array D2H copies.
+ * Any of ms_h2d/ms_kernel/ms_d2h may be passed NULL if that split is not wanted. Per-call
+ * device-buffer cudaMalloc/cudaFree (unavoidable in this harness's one-shot-call design) is
+ * OUTSIDE all three timed windows -- a real long-lived pipeline would allocate such scratch
+ * once, so charging it to a "per-batch" cost would be dishonest in the other direction. */
+int wave_discover_batch_timed(wave_ctx *g, int n, const wave_seed *seeds,
+                        const int16_t *table, const int16_t *score, int path_ave,
+                        int *ab, int *ae, int *bb, int *be, int *diffs,
+                        float *ms_h2d, float *ms_kernel, float *ms_d2h);
+
+/* Task 7: mechanism-decomposition helper -- queries the achieved occupancy of the two Stage-1
+ * sweep kernels (forward_sweep_warp/reverse_sweep_warp) on the current device via
+ * cudaOccupancyMaxActiveBlocksPerMultiprocessor (block size fixed at 32 = one warp/block, so
+ * blocksPerSM == warpsPerSM). *smCount is the device's multiprocessor count; concurrent warps
+ * on the whole device = min(*maxBlocksFwd,*maxBlocksRev) * (*smCount). Must be called after
+ * wave_open() (needs an active CUDA context) but does not require genome residency. */
+void wave_query_occupancy(int *maxBlocksFwd, int *maxBlocksRev, int *smCount);
+
 #ifdef __cplusplus
 }
 #endif
