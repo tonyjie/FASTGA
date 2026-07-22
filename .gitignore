@@ -70,6 +70,7 @@ docs/benchmark_matrix/divergence/*/*.stderr
 FastGA.prof
 /extract_tasks
 /extract_disc
+/extract_seeds
 gpu/gpu_align
 gpu/gpu_discover
 gpu/*.o
