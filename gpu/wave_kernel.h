@@ -139,6 +139,67 @@ int wave_discover_batch_timed(wave_ctx *g, int n, const wave_seed *seeds,
  * wave_open() (needs an active CUDA context) but does not require genome residency. */
 void wave_query_occupancy(int *maxBlocksFwd, int *maxBlocksRev, int *smCount);
 
+/* Stage-2 TRACE (Task 8): sparse-checkpoint trace-points -- a faithful warp-cooperative port of
+ * align.c's Local_Alignment forward_wave+reverse_wave INCLUDING the Pebble cells[] checkpoints
+ * pushed DURING the sweep at each tspace boundary and the backward pointer-walk that emits
+ * (diff,Δb) per panel (align.c:482-533,746-768,860-911 forward; 1010-1060,1266-1288,1366-1456
+ * reverse).  Memory is O(checkpoints), NOT O(band*depth): the discarded gpu/trace_batch stored
+ * every d-layer and overflowed at depth 2048 -- this stores only the sparse tspace-boundary
+ * checkpoints in a BOUNDED per-warp buffer with overflow detection (a seed whose checkpoints or
+ * trace length exceed the bound is reported as all -2, exactly like the Stage-1 band overflow).
+ *
+ * This is a SEPARATE kernel from the Stage-1 sweep kernels (forward_sweep_warp/reverse_sweep_warp),
+ * which are left byte-identical -- see wave_kernel.cu's Task-8 header for the disclosed
+ * single-pass-vs-separate-kernel decision.  It reproduces the SAME phase-1-parallel-slide /
+ * phase-2-serial-trim structure, so its endpoints match Stage-1's; the trace is emitted on top.
+ *
+ * Produces, per seed i (contig-relative, same frame as Local_Alignment's apath):
+ *     ab[i]/ae[i]/bb[i]/be[i] = apath->abpos/aepos/bbpos/bepos
+ *     diffs[i]                = apath->diffs (forward trimd + reverse trimd)
+ *     tlen[i]                 = apath->tlen  (always even; 2 shorts per panel)
+ *     trace + (size_t)i*trace_stride = the tlen[i] uint16 (d_0,b_0,...) trace-point list,
+ *                                       left-aligned at offset 0, exactly as FastGA writes it.
+ * `trace_stride` is the per-seed uint16 capacity of the caller's `trace` buffer; a seed whose
+ * tlen would exceed it (or whose checkpoint buffer overflows) is reported tlen[i]=-2 (all -2).
+ * `aoff` is align.c's trace-boundary phase (0 when the A-seq is not complemented, as in this
+ * harness where aln.flags=0).  Returns 0 on success, -1 on a fatal launch/alloc error. */
+int wave_trace_batch(wave_ctx *g, int n, const wave_seed *seeds,
+                     const int16_t *table, const int16_t *score, int path_ave,
+                     int aoff, int tspace,
+                     int *ab, int *ae, int *bb, int *be, int *diffs, int *tlen,
+                     uint16_t *trace, int trace_stride);
+
+/* Task 9: CUDA-event-timed trace-inclusive discovery.  Same contract/output as wave_trace_batch
+ * (the trace kernel does the FULL discover+trace sweep in one pass), but timing-split with four
+ * cudaEvent windows so the end-to-end benchmark can report the SAME two honest bases as Stage-1:
+ *   (i)  kernel-only ("wave engine, genome resident") = ms_kernel alone;
+ *   (ii) realistic = ms_h2d + ms_kernel + ms_d2h_meta + <compacted trace D2H>.
+ * The four splits:
+ *   ms_h2d       -- ONLY the per-batch `seeds` H2D copy.
+ *   ms_kernel    -- ONLY the wave_trace_warp launch (discover+trace, one pass).
+ *   ms_d2h_meta  -- the six small result arrays (ab/ae/bb/be/diffs/tlen), n*4 bytes each.
+ *   ms_d2h_trace -- the STRIDED trace buffer copy (n*trace_stride uint16).  This is dominated by
+ *                   per-seed zero padding (trace_stride is a worst-case capacity, real tlen<<stride)
+ *                   and is therefore a HARNESS ARTIFACT, not a representative engine cost: a real
+ *                   engine would compact traces device-side and copy only sum(tlen)*2 bytes.  The
+ *                   caller reports the compacted-equivalent as the honest basis (ii) trace tax and
+ *                   this strided value only as a pessimistic upper bound.  Any split ptr may be NULL.
+ * The trim tables H2D (one-time in a real deployment) is outside all timed windows, as in Stage-1.
+ * Returns 0 on success, -1 on a fatal launch/alloc error. */
+int wave_trace_batch_timed(wave_ctx *g, int n, const wave_seed *seeds,
+                     const int16_t *table, const int16_t *score, int path_ave,
+                     int aoff, int tspace,
+                     int *ab, int *ae, int *bb, int *be, int *diffs, int *tlen,
+                     uint16_t *trace, int trace_stride,
+                     float *ms_h2d, float *ms_kernel, float *ms_d2h_meta, float *ms_d2h_trace);
+
+/* Task 9: occupancy of the Stage-2 trace kernel (wave_trace_warp) for the trace-inclusive
+ * mechanism decomposition.  *maxBlocksTrace = cudaOccupancyMaxActiveBlocksPerMultiprocessor for
+ * wave_trace_warp (block=32=1 warp); *smCount = device SM count.  NOTE the launch grid is capped
+ * at TR_POOL=512 blocks (bounded by the O(checkpoints) per-warp scratch), so the actual resident
+ * warps = min(*maxBlocksTrace * *smCount, 512) -- report that min, not the raw occupancy product. */
+void wave_query_trace_occupancy(int *maxBlocksTrace, int *smCount, int *gridCap);
+
 #ifdef __cplusplus
 }
 #endif

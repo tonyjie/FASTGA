@@ -1,0 +1,25 @@
+wave_validate: 20000 of 518037 seeds (uniform), path_ave=43, tspace=100, trace_stride=32768
+
+=== wave_validate results (20000 sampled, 19974 comparable, 26 overflow-excluded) ===
+  overflow cause: band(>2048 diag)=0  cells(>262144 checkpts)=0  trace(>stride)=26
+  CPU trace self-check (Check_Trace_Points valid)   : 19730/20000
+  (1) GPU trace Check_Trace_Points-VALID            : 19974/19974  (100.000%)   [GATE 100%]
+      GPU trace INVALID                             : 0
+  (2) same edit distance vs CPU (|Δdiffs|==0)       : 19829/19974  (99.274%)
+      GPU worse (diffs>CPU) 24 ; GPU better 121 ; mean|Δdiff|=8702.648 max=141175
+  endpoint-exact (all 4)                            : 19701/19974  (98.633%)
+
+  --- byte-exact vs equally-optimal split (of 19974 comparable) ---
+  BYTE-EXACT (endpoints+tlen+every (d,b) identical) : 19585  (98.052%)
+  same-score DIFFERENT-path (equally optimal)       : 244
+  different-score (worse+better)                    : 145
+
+  --- IN-SCOPE vs OUT-OF-SCOPE (out == CPU DUB_TRIM re-center at a short end) ---
+  out-of-scope (CPU short-end re-center)            : 390  (byte-exact 1, same-score 245)
+  in-scope (CPU long at both ends)                  : 19584
+     in-scope byte-exact                            : 19584/19584  (100.000%)
+     in-scope same-score (byte-exact + diff-path)   : 19584/19584  (100.000%)   [GATE >= 99%]
+     in-scope same-score DIFFERENT-path (Task6 tie) : 0
+     in-scope worse path (genuinely worse)          : 0
+
+  GATE: Check_Trace_Points 100% PASS ; in-scope same-distance>=99% PASS => PASS

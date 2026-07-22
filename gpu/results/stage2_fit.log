@@ -1,0 +1,30 @@
+host genome build (Get_Contig, A + Bfwd + Brev): 9.072 s (A: 1850 contigs, 3136819257 bp; B: 24 contigs, 3117275501 bp, fwd+rev)
+genome H2D upload: 2.671 s  (9.371 GB resident: A=3.137GB Bfwd=3.117GB Brev=3.117GB) -> 3.51 GB/s
+seeds: 518037 loaded from gpu/wave.seeds, 0 with contig-relative anchor out of [0,len] bounds, device seed-array upload 0.0008 s (8.29 MB)
+
+--stage2-fit: TRACE-INCLUSIVE full distribution, 518037 seeds, path_ave=43, tspace=100, chunk=20000, trace_stride=32768, reps=3
+occupancy: wave_trace_warp 20 blocks/SM x 108 SMs = 2160; launch grid cap TR_POOL=512 -> resident warps = min = 512
+  rep 0: kernel=58572.7ms  seedH2D=25.5ms  metaD2H=3.7ms  stridedTraceD2H=2464.3ms  (comparable=517305 overflow=732)
+  rep 1: kernel=58573.6ms  seedH2D=26.5ms  metaD2H=3.8ms  stridedTraceD2H=2440.0ms  (comparable=517305 overflow=732)
+  rep 2: kernel=58573.4ms  seedH2D=26.5ms  metaD2H=3.6ms  stridedTraceD2H=2430.3ms  (comparable=517305 overflow=732)
+
+TRACE-INCLUSIVE throughput (best-of-3 by kernel):
+  basis (i)  kernel-only (genome resident)      :  58572.7 ms  (   8844.3 seeds/s)
+  basis (ii) realistic (+seedH2D+metaD2H+compacted-traceD2H):  58629.3 ms (   8835.8 seeds/s)
+      [compacted trace vol = 378.0 MB (sum tlen*2); strided-copy artifact = 33950.1 MB, 2464.3 ms -> if charged:    8483.2 seeds/s]
+
+mechanism decomposition (basis (i), trace-inclusive):
+  GPU: 8844.3 aln/s / 512 resident warps = 17.2741 aln/s per warp
+  CPU: 1200.7 aln/s per core (1-thread, discover+trace)
+  per-core / per-warp = 69.5x ; aggregate ~= (512 warps/32 cores) x (per-warp/per-core) = 16.00x x 0.0144 = 0.23x
+
+correctness (endpoints/diffs vs .cpuref): same-score 513212/517305 (99.209%); trace byte-exactness -> gpu/wave_validate (see final.md)
+
+=== HEADLINE (APPLES-TO-APPLES, trace-inclusive): full 518037 seeds ===
+  GPU discover+trace basis (i)  kernel-only :     8844.3 seeds/s
+  GPU discover+trace basis (ii) realistic   :     8835.8 seeds/s
+  CPU 1-core  (discover+trace)              :     1200.7 aln/s
+  CPU 32-core (discover+trace)              :    38713.8 aln/s
+  speedup vs 1-core : basis(i)   7.37x   basis(ii)   7.36x
+  speedup vs 32-core: basis(i)   0.23x   basis(ii)   0.23x
+  (discovery-only Stage-1 sub-result was 1.70x vs 32-core; trace is now INCLUDED on the GPU too -- this is the honest end-to-end number)

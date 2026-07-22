@@ -177,3 +177,9 @@ wave_bench_gpu: gpu/wave_bench_gpu.cu gpu/wave_kernel.o gpu/wave_kernel.h gpu/wa
 	$(CC) $(CFLAGS) -I. -o gpu/wave_bench_gpu gpu/wave_bench_gpu.o gpu/wave_kernel.o \
 	      align.c GDB.c alncode.c gene_core.c ONElib.c \
 	      -lpthread -lm -lz -L/usr/local/cuda/lib64 -lcudart -lstdc++
+
+wave_validate: gpu/wave_validate.c gpu/wave_kernel.o gpu/wave_kernel.h gpu/wave_harness.h \
+                align.c align.h GDB.c GDB.h alncode.c alncode.h gene_core.c ONElib.c
+	$(CC) $(CFLAGS) -I. -Igpu -o gpu/wave_validate gpu/wave_validate.c gpu/wave_kernel.o \
+	      align.c GDB.c alncode.c gene_core.c ONElib.c \
+	      -lpthread -lm -lz -L/usr/local/cuda/lib64 -lcudart -lstdc++

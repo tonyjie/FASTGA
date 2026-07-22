@@ -215,9 +215,60 @@ static void cpuref_path_from_seeds(const char *seeds_path, char *out, size_t out
   strncat(out,".cpuref",outsz-strlen(out)-1);
 }
 
+//  ---- Task 9: chunked trace-inclusive timing over an arbitrary seed subset.  The trace kernel
+//  does the FULL discover+trace sweep in ONE pass, so this is the apples-to-apples end-to-end
+//  measurement vs the CPU Local_Alignment baseline (which also emits trace in one pass).  Seeds
+//  are processed in fixed CHUNK-sized batches (bounds the O(n*trace_stride) device/host trace
+//  buffer AND matches a real batched engine); the four cudaEvent splits are summed across chunks.
+//  `trace` is a reusable CHUNK*trace_stride host buffer.  Returns summed ms in the out-params and
+//  the total compacted trace volume (sum of real tlen*2 bytes) + comparable/overflow counts.
+//  If `keep_meta` is non-NULL arrays (len>=n) the per-seed ab/ae/bb/be/diffs/tlen are copied out
+//  (for bucketing); pass NULL to discard.
+static int trace_time_chunked(wave_ctx *g, int n, const wave_seed *WS,
+                              const int16_t *tab, const int16_t *scr, int path_ave, int tspace,
+                              int CHUNK, uint16_t *trace, int TR_STRIDE,
+                              int *ab_out, int *ae_out, int *bb_out, int *be_out,
+                              int *df_out, int *tl_out,
+                              double *sum_h2d_ms, double *sum_ker_ms,
+                              double *sum_meta_ms, double *sum_trace_ms,
+                              double *compacted_bytes, long *comparable, long *overflow)
+{ double sh=0, sk=0, sm=0, st=0, cb=0; long comp=0, ov=0;
+  int off;
+  int *ab=(int*)malloc((size_t)CHUNK*sizeof(int)), *ae=(int*)malloc((size_t)CHUNK*sizeof(int));
+  int *bb=(int*)malloc((size_t)CHUNK*sizeof(int)), *be=(int*)malloc((size_t)CHUNK*sizeof(int));
+  int *df=(int*)malloc((size_t)CHUNK*sizeof(int)), *tl=(int*)malloc((size_t)CHUNK*sizeof(int));
+  if (!ab||!ae||!bb||!be||!df||!tl) { fprintf(stderr,"trace_time_chunked: OOM\n"); return -1; }
+
+  for (off = 0; off < n; off += CHUNK)
+    { int cn = (n-off < CHUNK) ? (n-off) : CHUNK;
+      float h2d=0,ker=0,meta=0,tr=0;
+      if (wave_trace_batch_timed(g,cn,WS+off,tab,scr,path_ave,0,tspace,
+                                 ab,ae,bb,be,df,tl,trace,TR_STRIDE,
+                                 &h2d,&ker,&meta,&tr) != 0)
+        { free(ab);free(ae);free(bb);free(be);free(df);free(tl); return -1; }
+      sh+=h2d; sk+=ker; sm+=meta; st+=tr;
+      int k;
+      for (k = 0; k < cn; k++)
+        { if (tl[k] < 0 || df[k] == -2) { ov++; }
+          else { comp++; cb += (double) tl[k] * sizeof(uint16_t); }
+          if (ab_out) { ab_out[off+k]=ab[k]; ae_out[off+k]=ae[k]; bb_out[off+k]=bb[k];
+                        be_out[off+k]=be[k]; df_out[off+k]=df[k]; tl_out[off+k]=tl[k]; }
+        }
+    }
+  free(ab);free(ae);free(bb);free(be);free(df);free(tl);
+  if (sum_h2d_ms)   *sum_h2d_ms   = sh;
+  if (sum_ker_ms)   *sum_ker_ms   = sk;
+  if (sum_meta_ms)  *sum_meta_ms  = sm;
+  if (sum_trace_ms) *sum_trace_ms = st;
+  if (compacted_bytes) *compacted_bytes = cb;
+  if (comparable) *comparable = comp;
+  if (overflow)   *overflow   = ov;
+  return 0;
+}
+
 static char *Usage =
   "<in:path>[.1aln] <in:path.seeds> [--selftest] [--fwd-validate] [--discover-validate]\n"
-  "       [--stage1-fit] [--cpu-1core=<aln/s>] [--cpu-32core=<aln/s>]";
+  "       [--stage1-fit] [--stage2-fit] [--cpu-1core=<aln/s>] [--cpu-32core=<aln/s>]";
 
 int main(int argc, char *argv[])
 { GDB      _gdb1, *gdb1 = &_gdb1;
@@ -230,6 +281,7 @@ int main(int argc, char *argv[])
   int       fwdvalidate = 0;
   int       discvalidate = 0;
   int       stage1fit = 0;
+  int       stage2fit = 0;
   //  defaults = Task 3's measured, unpinned numbers; override with --cpu-1core=/--cpu-32core=
   //  after a fresh pinned re-run (Task 7 brief: "re-confirm").
   double    cpu_1core_alnps  = 1212.0;
@@ -243,6 +295,7 @@ int main(int argc, char *argv[])
         if (strcmp(argv[i],"--fwd-validate") == 0)      fwdvalidate = 1;
         if (strcmp(argv[i],"--discover-validate") == 0) discvalidate = 1;
         if (strcmp(argv[i],"--stage1-fit") == 0)        stage1fit = 1;
+        if (strcmp(argv[i],"--stage2-fit") == 0)        stage2fit = 1;
         if (strncmp(argv[i],"--cpu-1core=",12) == 0)    cpu_1core_alnps  = atof(argv[i]+12);
         if (strncmp(argv[i],"--cpu-32core=",13) == 0)   cpu_32core_alnps = atof(argv[i]+13);
       }
@@ -835,6 +888,137 @@ int main(int argc, char *argv[])
                 free(tab); free(scr); free(ref);
               }
           }
+      }
+
+    //  ---- Task 9 --stage2-fit: THE apples-to-apples end-to-end benchmark.  The GPU trace kernel
+    //  does discover+trace in ONE pass, exactly like the CPU Local_Alignment baseline (which always
+    //  emitted trace).  Measures trace-inclusive GPU throughput over the FULL distribution on both
+    //  honest bases and computes the speedup vs the SAME pinned CPU numbers used in Stage-1.
+
+    if (stage2fit)
+      { const int TR_STRIDE = 32768;             // matches wave_validate -> same 0.13% overflow
+        const int CHUNK     = 20000;             // batch size (bounds n*stride device/host trace buf)
+        int NREPS = 3; { char *e = getenv("STAGE2_NREPS"); if (e) NREPS = atoi(e); if (NREPS<1) NREPS=1; }
+
+        wave_seed *WS = (wave_seed *) malloc((size_t) N * sizeof(wave_seed));
+        int i;
+        for (i = 0; i < N; i++)
+          { SeedRec *s = &S[i];
+            WS[i].aread = s->aread;  WS[i].bread = s->bread;
+            WS[i].alen  = s->alen;   WS[i].blen  = s->blen;
+            WS[i].anti  = s->seed_anti; WS[i].diag = s->seed_diag;
+            WS[i].comp  = (s->flags & 0x1) ? 1 : 0;
+          }
+        int16_t *tab = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+        int16_t *scr = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+        int path_ave = build_trim_tables(gdb1->freq,0.7,tab,scr);
+
+        uint16_t *trbuf = (uint16_t *) malloc((size_t) CHUNK * TR_STRIDE * sizeof(uint16_t));
+        int *mAb=(int*)malloc((size_t)N*sizeof(int)), *mAe=(int*)malloc((size_t)N*sizeof(int));
+        int *mBb=(int*)malloc((size_t)N*sizeof(int)), *mBe=(int*)malloc((size_t)N*sizeof(int));
+        int *mDf=(int*)malloc((size_t)N*sizeof(int)), *mTl=(int*)malloc((size_t)N*sizeof(int));
+        if (!trbuf||!mAb||!mDf) { fprintf(stderr,"%s: --stage2-fit OOM\n",argv[0]); return 1; }
+
+        printf("\n--stage2-fit: TRACE-INCLUSIVE full distribution, %d seeds, path_ave=%d, "
+               "tspace=%d, chunk=%d, trace_stride=%d, reps=%d\n",
+               N,path_ave,TSPACE,CHUNK,TR_STRIDE,NREPS);
+
+        //  ---- occupancy / concurrency of the trace kernel ----
+        int mbTrace=0, smCount=0, gridCap=0;
+        wave_query_trace_occupancy(&mbTrace,&smCount,&gridCap);
+        long occWarps = (long) mbTrace * smCount;
+        long residentWarps = occWarps < gridCap ? occWarps : gridCap;
+        printf("occupancy: wave_trace_warp %d blocks/SM x %d SMs = %ld; launch grid cap TR_POOL=%d "
+               "-> resident warps = min = %ld\n",
+               mbTrace,smCount,occWarps,gridCap,residentWarps);
+
+        //  ---- best-of-NREPS full-distribution timing (both bases) ----
+        double best_ker=1e30, best_h2d=0, best_meta=0, best_trace=0, comp_bytes=0;
+        long comparable=0, overflow=0;
+        int rep;
+        for (rep = 0; rep < NREPS; rep++)
+          { double sh,sk,sm,st,cb; long comp,ov;
+            int *ao = (rep==0)?mAb:NULL, *eo=(rep==0)?mAe:NULL, *bo=(rep==0)?mBb:NULL;
+            int *xe = (rep==0)?mBe:NULL, *fo=(rep==0)?mDf:NULL, *to=(rep==0)?mTl:NULL;
+            if (trace_time_chunked(g,N,WS,tab,scr,path_ave,TSPACE,CHUNK,trbuf,TR_STRIDE,
+                                   ao,eo,bo,xe,fo,to,&sh,&sk,&sm,&st,&cb,&comp,&ov) != 0)
+              { fprintf(stderr,"%s: trace_time_chunked failed rep %d\n",argv[0],rep); break; }
+            printf("  rep %d: kernel=%.1fms  seedH2D=%.1fms  metaD2H=%.1fms  stridedTraceD2H=%.1fms"
+                   "  (comparable=%ld overflow=%ld)\n", rep,sk,sh,sm,st,comp,ov);
+            if (sk < best_ker) { best_ker=sk; best_h2d=sh; best_meta=sm; best_trace=st; }
+            comparable=comp; overflow=ov; comp_bytes=cb;
+          }
+
+        //  compacted trace D2H = strided time scaled by (real bytes / strided bytes): a real engine
+        //  compacts device-side and copies only sum(tlen)*2 bytes, not the zero-padded stride.
+        double strided_bytes = (double) N * TR_STRIDE * sizeof(uint16_t);
+        double compact_trace_ms = best_trace * (strided_bytes>0 ? comp_bytes/strided_bytes : 0.0);
+
+        double ker_s      = best_ker/1000.0;
+        double realistic_s= (best_ker+best_h2d+best_meta+compact_trace_ms)/1000.0;
+        double strided_s  = (best_ker+best_h2d+best_meta+best_trace)/1000.0;
+        double gpu_i  = N/ker_s;           // basis (i)  kernel-only (resident engine)
+        double gpu_ii = N/realistic_s;     // basis (ii) realistic (compacted trace D2H)
+        double gpu_sd = N/strided_s;       // strided upper bound (pessimistic artifact)
+
+        printf("\nTRACE-INCLUSIVE throughput (best-of-%d by kernel):\n",NREPS);
+        printf("  basis (i)  kernel-only (genome resident)      : %8.1f ms  (%9.1f seeds/s)\n",
+               best_ker, gpu_i);
+        printf("  basis (ii) realistic (+seedH2D+metaD2H+compacted-traceD2H): %8.1f ms (%9.1f seeds/s)\n",
+               best_ker+best_h2d+best_meta+compact_trace_ms, gpu_ii);
+        printf("      [compacted trace vol = %.1f MB (sum tlen*2); strided-copy artifact = %.1f MB,"
+               " %.1f ms -> if charged: %9.1f seeds/s]\n",
+               comp_bytes/1e6, strided_bytes/1e6, best_trace, gpu_sd);
+
+        //  ---- mechanism decomposition (trace-inclusive) ----
+        double gpu_per_warp = residentWarps>0 ? gpu_i/residentWarps : 0.0;
+        printf("\nmechanism decomposition (basis (i), trace-inclusive):\n");
+        printf("  GPU: %.1f aln/s / %ld resident warps = %.4f aln/s per warp\n",
+               gpu_i,residentWarps,gpu_per_warp);
+        printf("  CPU: %.1f aln/s per core (1-thread, discover+trace)\n", cpu_1core_alnps);
+        printf("  per-core / per-warp = %.1fx ; aggregate ~= (%ld warps/32 cores) x (per-warp/per-core)"
+               " = %.2fx x %.4f = %.2fx\n",
+               gpu_per_warp>0?cpu_1core_alnps/gpu_per_warp:0.0, residentWarps,
+               residentWarps/32.0, gpu_per_warp/cpu_1core_alnps,
+               (residentWarps/32.0)*(gpu_per_warp/cpu_1core_alnps));
+
+        //  ---- correctness (endpoints/diffs only here; trace byte-exactness is wave_validate) ----
+        //  cross-check same-score vs .cpuref if present (does NOT require it).
+        { char cpuref_path[4096];
+          cpuref_path_from_seeds(argv[2],cpuref_path,sizeof(cpuref_path));
+          FILE *cf = fopen(cpuref_path,"rb");
+          CpuRefHeader ch;
+          if (cf && fread(&ch,sizeof(ch),1,cf)==1 && ch.magic==WAVE_CPUREF_MAGIC && (int)ch.nrecs==N)
+            { CpuRefRec *ref = (CpuRefRec *) malloc((size_t)N*sizeof(CpuRefRec));
+              if (ref && fread(ref,sizeof(CpuRefRec),(size_t)N,cf)==(size_t)N)
+                { long ss=0, cmp=0;
+                  for (i=0;i<N;i++)
+                    { if (mDf[i]==-2 || mTl[i]<0) continue; cmp++;
+                      if (mDf[i]==ref[i].diffs) ss++; }
+                  printf("\ncorrectness (endpoints/diffs vs .cpuref): same-score %ld/%ld (%.3f%%); "
+                         "trace byte-exactness -> gpu/wave_validate (see final.md)\n",
+                         ss,cmp, cmp?100.0*ss/cmp:0.0);
+                }
+              free(ref);
+            }
+          if (cf) fclose(cf);
+        }
+
+        //  ---- HEADLINE ----
+        printf("\n=== HEADLINE (APPLES-TO-APPLES, trace-inclusive): full %d seeds ===\n",N);
+        printf("  GPU discover+trace basis (i)  kernel-only : %10.1f seeds/s\n", gpu_i);
+        printf("  GPU discover+trace basis (ii) realistic   : %10.1f seeds/s\n", gpu_ii);
+        printf("  CPU 1-core  (discover+trace)              : %10.1f aln/s\n", cpu_1core_alnps);
+        printf("  CPU 32-core (discover+trace)              : %10.1f aln/s\n", cpu_32core_alnps);
+        printf("  speedup vs 1-core : basis(i) %6.2fx   basis(ii) %6.2fx\n",
+               gpu_i/cpu_1core_alnps, gpu_ii/cpu_1core_alnps);
+        printf("  speedup vs 32-core: basis(i) %6.2fx   basis(ii) %6.2fx\n",
+               gpu_i/cpu_32core_alnps, gpu_ii/cpu_32core_alnps);
+        printf("  (discovery-only Stage-1 sub-result was 1.70x vs 32-core; trace is now INCLUDED "
+               "on the GPU too -- this is the honest end-to-end number)\n");
+
+        free(WS); free(tab); free(scr); free(trbuf);
+        free(mAb); free(mAe); free(mBb); free(mBe); free(mDf); free(mTl);
       }
 
     free(S);
