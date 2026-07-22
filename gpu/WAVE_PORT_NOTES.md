@@ -168,8 +168,11 @@ Checkpoints are created in two places:
   just below the seed (`align.c:482–491` forward: `na = ((x+(tspace-aoff))/tspace-1)*tspace
   +aoff; pb->mark = na;`); then **0-wave crossing checkpoints**, one per boundary the slide
   actually crosses (`align.c:514–533`, `while (x >= na) { ...push...; na += tspace; }`).
-  Reverse mirrors this at `align.c:1010–1019` (root) and `align.c:1041–1060` (crossings),
-  with `na` counting down.
+  Reverse computes the same `na` boundary at `align.c:1010` but its root checkpoint diverges
+  from forward's: `align.c:1018` sets `pb->mark = x;` — the raw seed A-position, not the
+  `na` boundary value — while everything else (both passes' crossing checkpoints and
+  steady-state pushes: `align.c:490` forward root, `align.c:1057` reverse crossings) uses
+  `na`/`NA[k]`. Crossings are at `align.c:1041–1060`, with `na` counting down.
 - **Steady-state wave checkpoints** (`align.c:746–768` forward, `align.c:1266–1288`
   reverse): same `while (x >= NA[k])` boundary-crossing push, but guarded by
   `cells[ha].mark < NA[k]` (forward) / `cells[ha].mark > NA[k]` (reverse) so a checkpoint is
@@ -289,13 +292,19 @@ bounded, index-addressable structure.
    documented convention (e.g. lowest diagonal index wins) if bit-exactness against the CPU
    trim point is required.
 3. **`int` vs. native GPU position width.** The CPU uses 32-bit `int` throughout for `V`,
-   `M`, `HA`, `NA`, and the `besta/trima/morea` family, with `INT32_MAX`/`-INT32_MAX` used
-   as explicit out-of-band sentinels for retired diagonals (`align.c:664,667,675` forward;
-   `align.c:1181,1188,1195,1213` reverse), and trace deltas are truncated to `uint16` on
-   write (`align.c:884–885,900–901,1412–1417,1426–1428`). A GPU port choosing a different
-   native width for position/diagonal arithmetic (e.g. wider accumulators, or unsigned
-   diagonal indices) must reproduce these exact overflow/sentinel boundaries, or a genome
-   large enough to approach them will diverge from the CPU's clipping behavior.
+   `M`, `HA`, `NA`, and the `besta/trima/morea` family. Retired-diagonal sentinels are
+   *directional*, not symmetric: forward maximizes reach as it extends rightward, so a
+   retired diagonal must read as artificially *low* — it uses plain **`-1`**
+   (`align.c:657` `V[low] = -1;`, `align.c:664` `V[hgh] = am = -1;`, `align.c:675` `ac =
+   V[hgh+1] = V[low-1] = -1;`; note `align.c:667` `am = V[--hgh];` is the *keep* branch, not
+   a sentinel). Reverse minimizes reach as it extends leftward, so a retired diagonal must
+   read as artificially *high* — it uses **`INT32_MAX`** (`align.c:1181` `V[low] = ap =
+   INT32_MAX;`, `align.c:1188` `V[hgh] = INT32_MAX;`, `align.c:1195` `ac = V[hgh+1] =
+   V[low-1] = INT32_MAX;`). Trace deltas are separately truncated to `uint16` on write
+   (`align.c:884–885,900–901,1412–1417,1426–1428`). A GPU port choosing a different native
+   width for position/diagonal arithmetic (e.g. wider accumulators, or unsigned diagonal
+   indices) must reproduce these exact sentinel values *and* their directional asymmetry, or
+   a genome large enough to approach them will diverge from the CPU's clipping behavior.
 
 ---
 
