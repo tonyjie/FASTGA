@@ -29,4 +29,25 @@ typedef struct
     int32_t ref_ab, ref_ae, ref_bb, ref_be, ref_diffs;  //  .1aln reference, for validation
   } SeedRec;
 
+/*******************************************************************************************
+ *
+ *  .cpuref format -- Task 3's CPU-baseline reference dump, produced by gpu/wave_bench_cpu.c,
+ *  consumed by Tasks 6/7 to validate the GPU wave kernel.  One CpuRefRec per seed, in the
+ *  SAME ORDER as the corresponding .seeds file (record i <-> SeedRec i), holding the
+ *  contig-relative endpoints/diffs that FastGA's real Local_Alignment produced when started
+ *  from that seed -- i.e. the actual algorithm output the GPU port must reproduce, as opposed
+ *  to SeedRec's ref_* fields (the .1aln's own recorded truth).
+ *
+ *******************************************************************************************/
+
+#define WAVE_CPUREF_MAGIC 0x55504357u   // "WCPU"
+
+typedef struct
+  { uint32_t magic, nrecs, reserved1, reserved2;
+  } CpuRefHeader;
+
+typedef struct
+  { int32_t abpos, aepos, bbpos, bepos, diffs;   //  contig-relative, from Local_Alignment's path
+  } CpuRefRec;
+
 #endif

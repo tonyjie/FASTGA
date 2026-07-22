@@ -88,6 +88,7 @@ gpu/trace_lib_test
 gpu/trace_bench
 gpu/disc_bench
 gpu/cpu_trace_bench
+gpu/wave_bench_cpu
 FastGA.wave
 FastGA.prof
 *.perf.data
