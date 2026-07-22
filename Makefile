@@ -165,3 +165,15 @@ batch_queue_test: gpu/batch_queue_test.c gpu/batch_queue.c gpu/batch_queue.h
 genome_resident_test: gpu/genome_resident_test.cu gpu/fastga_gpu.cu gpu/fastga_gpu.h gpu/disc_format.h gpu/trace_format.h
 	nvcc -O3 -arch=sm_80 -c gpu/fastga_gpu.cu -o gpu/fastga_gpu.o
 	nvcc -O3 -arch=sm_80 -Igpu -o gpu/genome_resident_test gpu/genome_resident_test.cu gpu/fastga_gpu.o
+
+# Wave-parallelism study, Task 4: GPU genome residency (A forward, B forward+reverse-
+# complement) + seed upload -- loaders only, no wave kernel yet (Tasks 5/6 add the sweep).
+gpu/wave_kernel.o: gpu/wave_kernel.cu gpu/wave_kernel.h
+	nvcc -O3 -arch=sm_80 -Igpu -c gpu/wave_kernel.cu -o gpu/wave_kernel.o
+
+wave_bench_gpu: gpu/wave_bench_gpu.cu gpu/wave_kernel.o gpu/wave_kernel.h gpu/wave_harness.h \
+                align.c align.h GDB.c GDB.h alncode.c alncode.h gene_core.c ONElib.c
+	nvcc -O3 -arch=sm_80 -Igpu -I. -c gpu/wave_bench_gpu.cu -o gpu/wave_bench_gpu.o
+	$(CC) $(CFLAGS) -I. -o gpu/wave_bench_gpu gpu/wave_bench_gpu.o gpu/wave_kernel.o \
+	      align.c GDB.c alncode.c gene_core.c ONElib.c \
+	      -lpthread -lm -lz -L/usr/local/cuda/lib64 -lcudart -lstdc++
