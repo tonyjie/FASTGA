@@ -51,6 +51,44 @@ static double now(void)
   return ts.tv_sec + ts.tv_nsec*1e-9;
 }
 
+//  ---- Replicate align.c's suffix-positivity trim tables + ave_path (New_Align_Spec/set_table,
+//  align.c:197-269) so the GPU kernel can apply the identical TABLE/SCORE test.  We can't read
+//  them off the opaque _Align_Spec, so we rebuild them from the same inputs (freq, ave_corr).
+#define WV_TRIM_LEN  15
+#define WV_PATH_LEN  60
+#define WV_TRIM_SZ   (1<<WV_TRIM_LEN)     // 32768
+#define WV_FRACTION  1000
+
+static void gset_table(int bit, int prefix, int sc, int mx, int mscore, int dscore,
+                       int16_t *table, int16_t *score)
+{ if (bit >= WV_TRIM_LEN)
+    { table[prefix] = (int16_t)(sc - mx); score[prefix] = (int16_t) sc; }
+  else
+    { if (sc > mx) mx = sc;
+      gset_table(bit+1, (prefix<<1),     sc - dscore, mx, mscore, dscore, table, score);
+      gset_table(bit+1, (prefix<<1) | 1, sc + mscore, mx, mscore, dscore, table, score);
+    }
+}
+
+//  Build the int16 table[32768] + score[32768] and return ave_path -- byte-identical to
+//  New_Align_Spec(ave_corr,100,freq,0)'s internal spec->table/score/ave_path.
+static int build_trim_tables(float *freq, double ave_corr, int16_t *table, int16_t *score)
+{ static const double Bias_Factor[10] = { .690,.690,.690,.690,.780,.850,.900,.933,.966,1.000 };
+  double match; int bias;
+
+  match = freq[0] + freq[3];
+  if ((match <= 0.) == (match > 0.)) match = .5;
+  if (match > .5) match = 1. - match;
+  bias = (int)((match + .025)*20. - 1.);
+  if (match < .2) bias = 3;
+
+  int ave_path = (int)(WV_PATH_LEN * (1. - Bias_Factor[bias] * (1. - ave_corr)));
+  int mscore   = (int)(WV_FRACTION * Bias_Factor[bias] * (1. - ave_corr));
+  int dscore   = WV_FRACTION - mscore;
+  gset_table(0,0,0,0,mscore,dscore,table,score);
+  return ave_path;
+}
+
 /*  Build ONE flat, sentinel-padded, NUMERIC resident array for every contig of `gdb`
  *  (forward orientation only -- callers wanting the reverse-complement copy it and
  *  Complement_Seq() each contig's span in place, see main()).
@@ -150,7 +188,7 @@ static int pick_samples(int n, int *out)
   return m;
 }
 
-static char *Usage = "<in:path>[.1aln] <in:path.seeds> [--selftest]";
+static char *Usage = "<in:path>[.1aln] <in:path.seeds> [--selftest] [--fwd-validate] [--discover-validate]";
 
 int main(int argc, char *argv[])
 { GDB      _gdb1, *gdb1 = &_gdb1;
@@ -160,13 +198,17 @@ int main(int argc, char *argv[])
   int64     novl;
   int       TSPACE, ISTWO;
   int       selftest = 0;
+  int       fwdvalidate = 0;
+  int       discvalidate = 0;
 
   if (argc < 3)
     { fprintf(stderr,"Usage: %s %s\n",argv[0],Usage); return 1; }
   { int i;
     for (i = 3; i < argc; i++)
-      if (strcmp(argv[i],"--selftest") == 0)
-        selftest = 1;
+      { if (strcmp(argv[i],"--selftest") == 0)          selftest = 1;
+        if (strcmp(argv[i],"--fwd-validate") == 0)      fwdvalidate = 1;
+        if (strcmp(argv[i],"--discover-validate") == 0) discvalidate = 1;
+      }
   }
 
   //  ---- open the .1aln just for gdb1/gdb2 (paths+skeletons), exactly as wave_bench_cpu.c ----
@@ -313,6 +355,249 @@ int main(int argc, char *argv[])
     cudaFree(dSB);
     free(SA);
     free(SB);
+
+    //  ---- Task 5 --fwd-validate: GPU forward endpoint vs align.c's forward endpoint ----
+    //  Oracle = apath->aepos/bepos from the SAME Local_Alignment the CPU baseline runs
+    //  (forward_wave is an independent sweep, so its endpoint is identical alone or as part of
+    //  the full routine).  Fixed uniform 5000-seed sample; gate = forward-ENDPOINT agreement.
+
+    if (fwdvalidate)
+      { int SAMP = 5000; if (SAMP > N) SAMP = N;
+        long stride = (long) N / SAMP;
+        if (stride < 1) stride = 1;
+
+        wave_seed *WS = (wave_seed *) malloc((size_t) SAMP * sizeof(wave_seed));
+        int *sidx = (int *) malloc((size_t) SAMP * sizeof(int));
+        int *gAe = (int *) malloc((size_t) SAMP * sizeof(int));
+        int *gBe = (int *) malloc((size_t) SAMP * sizeof(int));
+        int *gFd = (int *) malloc((size_t) SAMP * sizeof(int));
+        int j;
+        for (j = 0; j < SAMP; j++)
+          { int i = (int)((long) j * N / SAMP);
+            SeedRec *s = &S[i];
+            sidx[j]      = i;
+            WS[j].aread  = s->aread;  WS[j].bread = s->bread;
+            WS[j].alen   = s->alen;   WS[j].blen  = s->blen;
+            WS[j].anti   = s->seed_anti; WS[j].diag = s->seed_diag;
+            WS[j].comp   = (s->flags & 0x1) ? 1 : 0;   // COMP_FLAG
+          }
+
+        //  trim tables (identical to New_Align_Spec(0.7,100,gdb1->freq,0) internals)
+        int16_t *tab = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+        int16_t *scr = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+        int path_ave = build_trim_tables(gdb1->freq,0.7,tab,scr);
+        printf("\n--fwd-validate: sampling %d of %d seeds (stride %ld), path_ave=%d\n",
+               SAMP,N,stride,path_ave);
+
+        double g0 = now();
+        if (wave_forward_batch(g,SAMP,WS,tab,scr,path_ave,gAe,gBe,gFd) != 0)
+          { fprintf(stderr,"%s: wave_forward_batch failed\n",argv[0]); }
+        double g1 = now();
+
+        //  host oracle: real Local_Alignment on the sampled seeds (same setup as wave_bench_cpu)
+        Align_Spec *spec = New_Align_Spec(0.7,100,gdb1->freq,0);
+        Work_Data  *work = New_Work_Data();
+        Alignment   aln;  Path path;  aln.path = &path;
+
+        long exact=0, within1=0, overflow=0, fshort_mismatch=0;
+        long mism_le5=0, mism_gt5=0, maxdelta=0;
+        long longset=0, longset_agree=0, mism_cpu_short=0;   // non-circular cross-checks
+        double c0 = now();
+        for (j = 0; j < SAMP; j++)
+          { SeedRec *s = &S[sidx[j]];
+            aln.aseq  = (char *) Aflat + Abase[s->aread];               // A always forward
+
+            aln.bseq  = (char *)(WS[j].comp ? Brev : Bfwd) + Bbase[s->bread];
+            aln.alen  = s->alen;  aln.blen = s->blen;  aln.flags = 0;
+            int dg = s->seed_diag, anti = s->seed_anti;
+            Local_Alignment(&aln,work,spec,dg,dg,anti,-1,-1);
+
+            if (gAe[j] == -2) { overflow++; continue; }
+            int dae = gAe[j]-path.aepos, dbe = gBe[j]-path.bepos;
+            //  Non-circular subset: seeds whose CPU FINAL endpoint is clearly long
+            //  (>=DUB_TRIM past the seed).  A long CPU alignment cannot be a fshort&&rshort
+            //  point-collapse, so on it the forward endpoint is either preserved or re-extended;
+            //  a GPU that truncated forward would show up here as a disagreement, so 100% here
+            //  independently rules out a "truncate long alignments" bug.
+            int cpu_long = (path.aepos + path.bepos - anti) >= 45;
+            if (cpu_long) { longset++; if (dae==0 && dbe==0) longset_agree++; }
+            if (dae==0 && dbe==0) exact++;
+            if (abs(dae)<=1 && abs(dbe)<=1) within1++;
+            else
+              { //  Attribute the mismatch.  Local_Alignment re-centers SHORT alignments (fshort,
+                //  align.c:1535,1553-1576, DUB_TRIM=45) as a FULL-routine post-process -- out of
+                //  the forward-wave port's scope (WAVE_PORT_NOTES "out of scope").  fshort is
+                //  tested on the FORWARD endpoint *before* reverse, which is exactly the GPU's
+                //  output, so use it as the principled detector.
+                if (!cpu_long) mism_cpu_short++;
+                if ((gAe[j] + gBe[j]) - anti < 45) fshort_mismatch++;
+                else
+                  { int md = abs(dae) > abs(dbe) ? abs(dae) : abs(dbe);   // genuine port residual
+                    if (md > maxdelta) maxdelta = md;
+                    if (md <= 5) mism_le5++; else mism_gt5++;
+                  }
+              }
+          }
+        double c1 = now();
+
+        Free_Work_Data(work);
+        Free_Align_Spec(spec);
+
+        long comparable = SAMP - overflow;
+        printf("--fwd-validate results (%d seeds, %ld comparable, %ld band-overflow):\n",
+               SAMP,comparable,overflow);
+        printf("  forward-endpoint EXACT (ae&be)        : %ld/%ld  (%.2f%%)\n",
+               exact,comparable, comparable?100.0*exact/comparable:0.0);
+        printf("  forward-endpoint within 1bp (ae&be)   : %ld/%ld  (%.2f%%)\n",
+               within1,comparable, comparable?100.0*within1/comparable:0.0);
+        printf("  of the %ld non-agreeing: fshort(full-LA re-center, out-of-scope)=%ld;"
+               "  genuine port residual: |delta|<=5=%ld, |delta|>5=%ld, max|delta|=%ld\n",
+               comparable-within1, fshort_mismatch, mism_le5, mism_gt5, maxdelta);
+        printf("  => port-attributable endpoint agreement (excl. fshort re-center): "
+               "%ld/%ld (%.2f%%)\n",
+               comparable-(mism_le5+mism_gt5), comparable,
+               comparable?100.0*(comparable-(mism_le5+mism_gt5))/comparable:0.0);
+        printf("  [non-circular] CPU-long subset (final aepos+bepos-anti>=45) EXACT: "
+               "%ld/%ld (%.2f%%);  mismatches with CPU also short: %ld/%ld\n",
+               longset_agree,longset, longset?100.0*longset_agree/longset:0.0,
+               mism_cpu_short, comparable-within1);
+        printf("  GPU batch %.4fs (%.0f seeds/s), host oracle %.4fs\n",
+               g1-g0, SAMP/(g1-g0), c1-c0);
+
+        free(WS); free(sidx); free(gAe); free(gBe); free(gFd); free(tab); free(scr);
+      }
+
+    //  ---- Task 6 --discover-validate: FULL fwd+rev discovery vs the CPU .cpuref (Task 3) ----
+    //  THE definitive Stage-1 correctness gate: over the ENTIRE seed distribution, compare the
+    //  GPU's ab/ae/bb/be/diffs (wave_discover_batch) to Local_Alignment's own output recorded in
+    //  the .cpuref.  same-score (|Δdiffs|==0) is the faithfulness proof the forward-only endpoint
+    //  check could not do; the depth-work ratio proves the GPU does ~the same wave work.
+
+    if (discvalidate)
+      { //  derive the .cpuref path from the .seeds path: strip ".seeds", append ".cpuref"
+        char cpuref_path[4096];
+        { size_t L = strlen(argv[2]);
+          const char *suf = ".seeds";  size_t sl = strlen(suf);
+          if (L > sl && strcmp(argv[2]+L-sl,suf) == 0)
+            { memcpy(cpuref_path,argv[2],L-sl); cpuref_path[L-sl] = 0; }
+          else
+            { memcpy(cpuref_path,argv[2],L); cpuref_path[L] = 0; }
+          strcat(cpuref_path,".cpuref");
+        }
+
+        FILE *cf = fopen(cpuref_path,"rb");
+        CpuRefHeader ch;
+        if (cf == NULL || fread(&ch,sizeof(ch),1,cf) != 1 || ch.magic != WAVE_CPUREF_MAGIC)
+          { fprintf(stderr,"%s: cannot open/parse cpuref %s (run wave_bench_cpu first)\n",
+                    argv[0],cpuref_path);
+            if (cf) fclose(cf);
+          }
+        else if ((int) ch.nrecs != N)
+          { fprintf(stderr,"%s: cpuref has %u recs, .seeds has %d -- mismatch\n",
+                    argv[0],ch.nrecs,N);
+            fclose(cf);
+          }
+        else
+          { CpuRefRec *ref = (CpuRefRec *) malloc((size_t) N * sizeof(CpuRefRec));
+            if (ref == NULL || fread(ref,sizeof(CpuRefRec),(size_t) N,cf) != (size_t) N)
+              { fprintf(stderr,"%s: short read of %d cpuref recs\n",argv[0],N); fclose(cf); }
+            else
+              { fclose(cf);
+
+                wave_seed *WS = (wave_seed *) malloc((size_t) N * sizeof(wave_seed));
+                int *gAb=(int*)malloc((size_t)N*sizeof(int)), *gAe=(int*)malloc((size_t)N*sizeof(int));
+                int *gBb=(int*)malloc((size_t)N*sizeof(int)), *gBe=(int*)malloc((size_t)N*sizeof(int));
+                int *gDf=(int*)malloc((size_t)N*sizeof(int));
+                int i;
+                for (i = 0; i < N; i++)
+                  { SeedRec *s = &S[i];
+                    WS[i].aread = s->aread;  WS[i].bread = s->bread;
+                    WS[i].alen  = s->alen;   WS[i].blen  = s->blen;
+                    WS[i].anti  = s->seed_anti; WS[i].diag = s->seed_diag;
+                    WS[i].comp  = (s->flags & 0x1) ? 1 : 0;   // COMP_FLAG
+                  }
+
+                int16_t *tab = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+                int16_t *scr = (int16_t *) malloc((size_t) WV_TRIM_SZ * sizeof(int16_t));
+                int path_ave = build_trim_tables(gdb1->freq,0.7,tab,scr);
+
+                printf("\n--discover-validate: FULL distribution, %d seeds, path_ave=%d, "
+                       "cpuref=%s\n",N,path_ave,cpuref_path);
+
+                double g0 = now();
+                if (wave_discover_batch(g,N,WS,tab,scr,path_ave,gAb,gAe,gBb,gBe,gDf) != 0)
+                  fprintf(stderr,"%s: wave_discover_batch failed\n",argv[0]);
+                double g1 = now();
+
+                //  ---- compare ----
+                long comparable=0, overflow=0;
+                long samescore=0, exact4=0, within2=0;
+                double ratio_sum=0; long ratio_n=0;
+                //  breakdown of same-score MISMATCHES (attribution):
+                long ss_mm=0, ss_mm_cpushort=0;   // cpu short => fshort/rshort re-center (out of scope)
+                long dmax=0; long dsum_abs=0;
+
+                for (i = 0; i < N; i++)
+                  { if (gDf[i] == -2) { overflow++; continue; }
+                    comparable++;
+                    CpuRefRec *r = &ref[i];
+
+                    if (gDf[i] == r->diffs) samescore++;
+                    else
+                      { ss_mm++;
+                        long dd = labs((long) gDf[i] - (long) r->diffs);
+                        dsum_abs += dd; if (dd > dmax) dmax = dd;
+                        //  CPU alignment short at either end => Local_Alignment re-centered/re-
+                        //  extended (align.c:1535,1551-1576), which the endpoint-only port omits.
+                        int cpu_fshort = (r->aepos + r->bepos - S[i].seed_anti) < 45;
+                        int cpu_rshort = (S[i].seed_anti - (r->abpos + r->bbpos)) < 45;
+                        if (cpu_fshort || cpu_rshort) ss_mm_cpushort++;
+                      }
+
+                    int e_ab = abs(gAb[i]-r->abpos), e_ae = abs(gAe[i]-r->aepos);
+                    int e_bb = abs(gBb[i]-r->bbpos), e_be = abs(gBe[i]-r->bepos);
+                    int emax = e_ab; if(e_ae>emax)emax=e_ae; if(e_bb>emax)emax=e_bb; if(e_be>emax)emax=e_be;
+                    if (emax == 0) exact4++;
+                    if (emax <= 2) within2++;
+
+                    if (r->diffs > 0) { ratio_sum += (double) gDf[i] / r->diffs; ratio_n++; }
+                  }
+
+                double ss_pct   = comparable ? 100.0*samescore/comparable : 0.0;
+                double ex_pct   = comparable ? 100.0*exact4/comparable     : 0.0;
+                double w2_pct   = comparable ? 100.0*within2/comparable     : 0.0;
+                double ratio_mn = ratio_n ? ratio_sum/ratio_n : 0.0;
+
+                printf("--discover-validate results (%d seeds, %ld comparable, %ld band-overflow):\n",
+                       N,comparable,overflow);
+                printf("  same-score  (|Δdiffs|==0)            : %ld/%ld  (%.3f%%)   [GATE >= 95%%]\n",
+                       samescore,comparable,ss_pct);
+                printf("  depth-work ratio mean(GPUdiff/CPUdiff): %.4f            [GATE in 0.97..1.05]\n",
+                       ratio_mn);
+                printf("  exact endpoint (all 4, tol 0)         : %ld/%ld  (%.3f%%)\n",
+                       exact4,comparable,ex_pct);
+                printf("  endpoint within 2bp (all 4)           : %ld/%ld  (%.3f%%)\n",
+                       within2,comparable,w2_pct);
+                printf("  of %ld same-score mismatches: %ld have a SHORT CPU end (fshort/rshort "
+                       "full-LA re-center, out-of-scope); mean|Δdiff|=%.2f max|Δdiff|=%ld\n",
+                       ss_mm, ss_mm_cpushort, ss_mm?(double)dsum_abs/ss_mm:0.0, dmax);
+                printf("  => port-attributable same-score (excl. CPU-short re-center): %ld/%ld (%.3f%%)\n",
+                       comparable-(ss_mm-ss_mm_cpushort), comparable,
+                       comparable?100.0*(comparable-(ss_mm-ss_mm_cpushort))/comparable:0.0);
+                printf("  GPU discover batch %.4fs (%.0f seeds/s)\n", g1-g0, N/(g1-g0));
+
+                int gate_ss = ss_pct >= 95.0;
+                int gate_dr = (ratio_mn >= 0.97 && ratio_mn <= 1.05);
+                printf("  GATE: same-score>=95%% %s ; depth-ratio in[0.97,1.05] %s => %s\n",
+                       gate_ss?"PASS":"FAIL", gate_dr?"PASS":"FAIL",
+                       (gate_ss && gate_dr)?"PASS":"FAIL");
+
+                free(WS); free(gAb); free(gAe); free(gBb); free(gBe); free(gDf);
+                free(tab); free(scr); free(ref);
+              }
+          }
+      }
+
     free(S);
   }
 
