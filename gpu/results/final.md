@@ -141,9 +141,67 @@ rate it discovers. The whole aggregate loss is the **3,456 → 512 = 6.75× coll
 warps**, forced by the trace kernel's per-warp checkpoint memory. 6.75 × (1/0.91) ≈ 7.4×, matching
 65,884 → 8,844.
 
-**Two distinct levers — separate them carefully.**
+> ## ⚠ CORRECTED 2026-07-27 — the "bandwidth" diagnosis below is WRONG
+>
+> Everything in §(a) and §(b) below that attributes the concurrency ceiling to **global-memory
+> bandwidth saturation** was refuted by Nsight Compute profiling (`ncu_profile.log`, `ncu_run.sh`,
+> `ncu_sass_fwd.csv`). The *measurements* (0.23× / 0.31× / 0.32×, and the 1.39×-for-4.2×-warps
+> scaling) all stand; only the **explanation** was wrong. The original text is kept verbatim below
+> so the record shows what was concluded and why it changed.
+>
+> **What the profiler found (13 launches: discovery ×5 full-distribution reps, trace ×8 chunks):**
+>
+> | | discovery | trace @512 | trace @2160 |
+> |---|---:|---:|---:|
+> | DRAM, % of peak | **0.08%** | **0.01%** | **0.03%** |
+> | L1 sector hit rate | 99.5% | 99.7% | 99.6% |
+> | achieved occupancy | 29.3% | 5.0% | 8.5% |
+> | ⇒ warps *busy* vs *resident* | 2,023 / 3,456 = 59% | 343 / 512 = 67% | **586 / 2,160 = 27%** |
+> | active lanes per instruction (of 32) | **4.52** | 3.18 | 3.18 |
+>
+> 1. **Nothing is bandwidth-bound.** DRAM runs at 0.01–0.44% of peak across all 13 launches with
+>    L1 hit rates of 98–99.8%. The checkpoint stream never troubles DRAM in any meaningful volume.
+> 2. **The real mechanism is idle warps — load imbalance.** `sm__warps_active` counts warps that are
+>    *present* (a warp stalled on memory still counts), so a low value can only mean their work
+>    finished and they left. Going 512 → 2,160 warps *worsened* busy-vs-resident 67% → 27%, because
+>    each warp's share drops from 1,012 to 240 alignments and the deep tail (~1% of alignments,
+>    ~37% of the work) stops averaging out. Three further confirmations: a *uniform* bucket workload
+>    reaches 87% of the theoretical occupancy ceiling while the real mixed one reaches 59%; and
+>    across trace chunks the longest-running have the *lowest* occupancy (5.5 s → 4.0%; 0.6 s → 5.9%).
+>    Per *busy* warp the rate barely moves (25.8 → 21.0 aln/s) — so "per-warp cratered 17.27 → 5.70"
+>    was an artifact of dividing by the *analytic* resident count rather than the measured busy count.
+> 3. **A second, previously unnoticed penalty:** trace launches grid == resident (512 < the 2,160
+>    ceiling), so **nothing is queued behind a slow warp**. Discovery's grid of 8,192 against 3,456
+>    resident is 2.37× oversubscribed and does get crude automatic rebalancing. Trace gets none.
+> 4. **The serial phase, not memory, dominates.** Source-level decomposition (`-lineinfo` rebuild,
+>    register usage identical to the committed build; per-SASS `Avg. Threads Executed`, which is
+>    exactly 1 inside `if (lane == 0)` by construction): **76.5% of instruction issue runs on a single
+>    lane and returns 19.2% of the useful work**, while phase-1 band work at 17–32 live lanes is 12.1%
+>    of issue and 64.8% of the work. The heaviest single-lane instructions decode to phase 2's
+>    k-descending trim scan. This also refutes the competing hypothesis that the low SIMT efficiency
+>    came from phase-1 slide divergence.
+>
+> **Revised lever ranking** (replaces §(a)/§(b) below):
+> 1. **Warp-ify phases 2 and 3** — lane-0 running-max / TABLE-SCORE / prune → warp reductions.
+>    Targets 76.5% of instruction issue. *(Was ranked below the deep-tail work on the basis of the
+>    CPU per-cell time-share — the wrong instrument for a GPU.)*
+> 2. **Dynamic work queue** (`atomicAdd` + persistent warps) replacing static striding — targets the
+>    measured 27–67% busy-vs-resident gap; the GPU analogue of the CPU work-stealing fix.
+> 3. **Cut trace's register footprint** (91/lane) to lift its ceiling past 20 blocks/SM.
+> 4. ~~Shrink checkpoint traffic / move to shared memory~~ — **deprioritised**: justified by a
+>    bandwidth bound that does not exist. Shared memory may still help via *latency*, not bandwidth.
+>
+> *Caveats: each profile samples one launch (discovery's is the full-distribution launch; trace's are
+> single 20,000-seed chunks, and the 8-chunk spread shows every ratio stable while work volume varies
+> 5.5×). ncu locks clocks to base — irrelevant at <0.5% of peak DRAM. Instruction issue ≠ wall time,
+> though with DRAM under 1% and L1 at 99% there is little stall to hide behind.*
 
-**(a) The CONCURRENCY knob (raise resident warps) — measured, and it is nearly closed by bandwidth.**
+---
+
+**Two distinct levers — separate them carefully.** *(⚠ superseded — see the correction above.)*
+
+**~~(a) The CONCURRENCY knob — nearly closed by bandwidth.~~** ⚠ **SUPERSEDED 2026-07-27 — the
+measurements stand, the bandwidth diagnosis does not. Original text follows verbatim:**
 Raising `TR_POOL` from the committed 512 up to the kernel's own occupancy ceiling was measured
 directly and committed (`stage2_fit_pool2048.log`, `stage2_fit_pool2160_ceiling.log`):
 
@@ -160,8 +218,8 @@ checkpoint traffic and saturated bandwidth, so ~3/4 of the added concurrency was
 Stage-1's discovery kernel, whose limiter was the block-count cap with bandwidth to spare; trace's
 limiter is bandwidth itself, because of the checkpoint scratch it must stream.)
 
-**(b) The TRAFFIC-REDUCTION lever (shrink per-warp checkpoint traffic) — UNTESTED, and it attacks
-exactly the bandwidth this study blames.** The concurrency sweep saturated bandwidth *at the current
+**~~(b) The TRAFFIC-REDUCTION lever — attacks exactly the bandwidth this study blames.~~** ⚠
+**SUPERSEDED 2026-07-27 — there is no bandwidth bound to attack. Original text follows verbatim:** The concurrency sweep saturated bandwidth *at the current
 per-warp traffic*; it says nothing about lowering that traffic. The per-warp checkpoint buffer
 `TR_CELLS_MAX = 262,144` is over-provisioned **~1,400×** vs the typical **~183-panel** wave — almost
 every warp's live checkpoints would fit in a right-sized **shared-memory** buffer, with a global
@@ -235,14 +293,18 @@ NOT a proof the GPU fundamentally cannot.**
   collapse behind the 1.70× → 0.23× fall.
 - **The CONCURRENCY knob is robustly closed, but it is not the only lever.** Raising the launch grid
   to the kernel's own occupancy ceiling was **measured and committed**: 512 → 2,160 warps returned
-  only 1.39× throughput (0.23× → 0.32× vs 32-core, using just ~19.2 GB of 80 GB) because the kernel
-  is **global-memory-bandwidth-bound** on the checkpoint stream. So concurrency alone tops out at
-  0.32×. But the untested **traffic-reduction** redesign — right-sized **shared-memory** checkpoints
-  (the per-warp `TR_CELLS_MAX`=262,144 buffer is over-provisioned ~1,400× vs the typical ~183-panel
-  wave) with a global overflow fallback for the rare deep wave — attacks exactly that bandwidth, and
-  by the per-warp decomposition could **plausibly approach parity**. It is unquantified headroom, not
-  a tuning knob; and trace is register-capped at 2,160 warps (vs discovery's 3,456), so its realistic
-  ceiling is **likely ≲1×**.
+  only 1.39× throughput (0.23× → 0.32× vs 32-core, using just ~19.2 GB of 80 GB). So concurrency
+  alone tops out at 0.32×.
+  **⚠ CORRECTED 2026-07-27:** this bullet originally attributed that ceiling to the kernel being
+  *global-memory-bandwidth-bound* on the checkpoint stream, and named right-sized shared-memory
+  checkpoints as the lever that would attack it. Nsight Compute refutes both: **DRAM runs at
+  0.01–0.03% of peak with a 99.6% L1 hit rate**. The added warps were **idle, not starved** —
+  busy-vs-resident falls 67% → 27% as each warp's share drops from 1,012 to 240 alignments, and
+  trace launches grid == resident so nothing is queued behind a slow warp. Per *busy* warp the rate
+  barely moves (25.8 → 21.0 aln/s). The real levers, in order, are (1) warp-ifying the lane-0 serial
+  phases, which carry **76.5% of instruction issue**, and (2) a dynamic work queue for the imbalance.
+  Trace is still register-capped at 2,160 warps (vs discovery's 3,456), so its realistic ceiling
+  remains **likely ≲1×**. Full evidence: `ncu_profile.log`, `ncu_sass_fwd.csv`, `ncu_run.sh`.
 - **Where a GPU could still fit:** the narrow-band majority of the *discovery* sweep is genuinely
   GPU-friendly (Stage-1: 24–90× per-warp-efficient buckets), and this cross-checks the memory note's
   independent A3b finding that the trace kernel — not discovery — is what starves (~10–20k aln/s

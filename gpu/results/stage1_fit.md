@@ -94,8 +94,8 @@ concurrently-resident warps grid-strides through further seeds as earlier ones f
 **Per-core / per-warp = 1,200.7 / 19.06 ≈ 63.0×.** This is the mechanistic explanation for the
 aggregate ratio: a CPU core executing the real scalar `Local_Alignment` (full-width ALUs, deep
 out-of-order pipelines, large per-core caches) is **~63× faster per lane** than one GPU warp
-running the same recurrence with 32 SIMT lanes forced into lockstep on a bandwidth-shaped
-problem that most of the time doesn't need all 32 lanes — but the GPU has **3,456 concurrent
+running the same recurrence with 32 SIMT lanes forced into lockstep on a problem that most of the
+time doesn't need all 32 lanes — but the GPU has **3,456 concurrent
 warps vs 32 CPU cores (108× more parallel units)**, so the aggregate ratio is the product of a
 large concurrency advantage mostly (not entirely) cancelled by a much larger per-lane
 efficiency disadvantage:
@@ -110,6 +110,25 @@ aggregate ratio ≈ (concurrent warps / cores) × (per-warp rate / per-core rate
 This reconstructs the measured 1.70× (basis i vs 32-core) to within rounding — the decomposition
 is internally consistent and is the "how" behind the headline ratio: **many slow warps, not few
 fast ones.**
+
+> **⚠ Read the decomposition as accounting, not as two measurements (noted 2026-07-27).** Only the
+> two aggregate throughputs are measured: GPU 65,884 seeds/s and CPU-32-core 38,714 aln/s, whose
+> ratio *is* 1.70×. The per-core figure 1,200.7 aln/s is also a direct stopwatch number
+> (`wave_bench_cpu.c`, single-threaded loop over all 518,037 seeds calling the real
+> `Local_Alignment`, genome preloaded, 431.5 s). But **19.06 aln/s per warp is not measured — it is
+> 65,884 ÷ 3,456**, where 3,456 is the CUDA occupancy calculator's *analytic* resident-warp ceiling.
+> Nsight Compute measures **achieved** occupancy at 29.26%, i.e. ~2,023 warps actually busy. Redo the
+> split with that: (2023/32) × (32.6/1200.7) = 63.2 × 0.02715 ≈ **1.72×** — the same answer, because
+> the warp count cancels between the two factors. So "108× more workers, each 63× weaker" and "63×
+> more workers, each 37× weaker" are the same fact stated two ways; neither pair is independently
+> observed.
+>
+> **What *is* independently measured (`ncu_profile.log`, `ncu_sass_fwd.csv`):** per-SASS
+> `Avg. Threads Executed` shows **76.5% of instruction issue runs on exactly one lane** (the
+> `if (lane == 0)` phase-2/3 code) and returns only 19.2% of the useful work, while phase-1 band
+> work at 17–32 live lanes is 12.1% of issue and 64.8% of the work — whole-kernel average 4.52 of 32
+> live lanes. That, not memory bandwidth, is the per-lane efficiency disadvantage this section
+> describes. Nothing in either kernel is bandwidth-bound (DRAM 0.01–0.44% of peak, L1 98–99.8%).
 
 **Unexploited headroom (observation, not implemented/measured further here):** the limiting
 factor is the block-count cap (32 blocks/SM), not registers — a 32-thread block occupies only
@@ -170,12 +189,20 @@ stratified aln/s  (rows=depth(path.diffs) bucket, cols=band-proxy |Δa-Δb| buck
 band is narrow (≤128), across every depth including the shallowest/most common seeds** — one
 warp's 32 lanes cover the whole band in a single pass there, so the GPU pays roughly the same
 tiny fixed cost per seed regardless of depth, while the CPU's per-seed cost scales with the
-actual diff count. **The GPU loses once band exceeds ~128–512**: the 32 lanes must serialize
-multiple band-tiles per wave step, and critically, the widest-band seeds are also concentrated
-in the deepest-depth bucket (n=9,448 at depth≤1000×band≤512, n=1,774 at the deep tail×band≤512),
-so per-warp work explodes exactly where per-warp efficiency is already worst — this compounding
-is why the wide-band cells (ratio 0.24×–4.2×) drag the full-distribution headline down from the
-24–90× seen in the narrow-band majority to the measured 1.70× aggregate.
+actual diff count. **The GPU loses once drift exceeds ~128–512** — but the causal chain is more
+indirect than "wider band → more tiles." **drift is bounded by depth** (net indels can never
+exceed the total edit distance, so `drift ≤ diffs` for every seed; the per-cell N matrix below is
+consequently lower-triangular). So the high-drift cells are populated *almost entirely by the
+deepest, longest alignments*: of the **8,059** seeds with drift in (128, 512], **6,789** sit in the
+deep-tail (>1000-edit) row, and **all 966** seeds with drift > 512 are in it (corrected counts —
+an earlier draft here misread the per-cell *rate* 9,448.0 aln/s as a count; the validated per-cell
+populations are tabulated below). A larger sustained band does force the 32 lanes to serialize a
+few more tiles per step (a 2–5× effect), but the dominant factor is that per-warp work explodes on
+these deep seeds exactly where per-warp efficiency is already worst — and, as the per-cell
+time-share below shows, that thin deep-tail minority (10.5% of seeds) is where **~80% of CPU wall
+time** actually goes. The huge 24–90× narrow-band wins cost almost no time, so they cannot move the
+aggregate; the headline lands at 1.70× because it is set by the deep tail, where both machines
+spend their clock.
 
 The `≤10 depth × ≤32 band` cell (722.6 aln/s, ratio 0.10×; its seeds are part of the depth≤10
 row, n=23,236) is a below-CPU outlier at this granularity. It is most likely a **small-N
@@ -190,6 +217,61 @@ exactly the regime a GPU should help most in principle, and indeed the GPU/CPU r
 to 41.5× at the widest resolvable band — but this row is a small, biased slice of the
 distribution (the hardest seeds only) and **must never stand in for the full-distribution
 headline above.**
+
+---
+
+## Per-cell population and time-share (added post-hoc; not part of the original Task-7 run)
+
+Bucketed directly from `wave.cpuref` (`Local_Alignment`'s own endpoints/diffs) with the same
+`{8,32,128,512,∞}` × `{10,50,200,1000,∞}` boundaries. **Row totals reproduce the CPU stratified
+table above bit-for-bit** (23,313 / 42,693 / 161,626 / 235,771 / 54,634 → 518,037), which validates
+the bucketing. Script: `percell.py` (reads cpuref, histograms, cross-checks row totals).
+
+### Per-cell N (count of alignments)
+
+```
+ depth\drift    <=8      <=32     <=128     <=512      >512       ROW
+     <=10     23311        2         0         0         0     23313
+     <=50     38565     4108        20         0         0     42693
+    <=200     82392    67163     12065         6         0    161626
+   <=1000     54498   102539     77470      1264         0    235771
+    >1000      9766    15575     21538      6789       966     54634
+      COL    208532   189387    111093      8059       966    518037
+```
+
+Two structural facts fall out: (1) the matrix is **lower-triangular** — `drift ≤ depth` always, so
+drift and depth are correlated axes, not independent ones; (2) the distribution is **extremely
+narrow-skewed** — drift ≤ 32 covers **77%** of all seeds, while drift > 512 is **966 seeds =
+0.19%**. The `depth≤10 × drift≤32` cell that read 0.10× in the ratio table holds exactly **N = 2**
+alignments — confirming that outlier is pure small-N launch-overhead noise, not signal.
+
+### Time-share % (share of total wall time each cell consumes)
+
+`time_cell = N_cell / rate_cell`, normalized. **CPU is the rigorous one** (per-seed timers are
+additive; the cell times sum to 431.5 s = the measured 1-core wall, 518,037 / 1200.7). GPU per-cell
+rates come from *isolated per-bucket re-runs*, so they are **not** additive (they sum to 18.4 s, not
+the real full-batch 7.86 s) and the small deep-tail batches carry inflated fixed launch overhead —
+so the GPU shares below are **directional, not exact**, and overstate the deep-tail concentration.
+
+```
+CPU 1-core time-share %          GPU kernel-only time-share % (directional)
+ depth\drift  <=8   <=32  <=128 <=512  >512  ROW    depth\drift  <=8   <=32  <=128 <=512  >512  ROW
+     <=10    0.66  0.00     .     .     .   0.7%        <=10    0.18  0.02     .     .     .   0.2%
+     <=50    1.14  0.13  0.00     .     .   1.3%        <=50    0.46  0.18  0.02     .     .   0.7%
+    <=200    2.66  2.37  0.49  0.00     .   5.5%       <=200    0.70  0.76  0.49  0.02     .   2.0%
+   <=1000    2.62  5.31  4.91  0.13     .  13.0%      <=1000    1.15  1.91  1.97  0.73     .   5.7%
+    >1000    3.25  6.64 21.12 36.84 11.72  79.6%       >1000   12.29 13.47 25.75 20.78 19.14  91.4%
+```
+
+**The deep-tail row (depth > 1000) is 10.5% of the alignments but 79.6% of CPU wall time**; a single
+cell — `depth>1000 × drift≤512`, N = 6,789 (1.3% of all seeds) — is **36.8%** of CPU time. This is
+the exact same workload-imbalance shape the CPU sort+align phase suffers: a ~1% minority of monster
+alignments sets the clock. It is also *why* discovery only reaches 1.70× rather than the 24–90× of
+the narrow-band majority — the majority is nearly time-free, and the aggregate is decided by the
+deep tail where GPU/32-core is close to parity. The direct implication for further GPU work: a
+uniform per-warp optimization (e.g. shared-memory checkpoints) chips at the wrong thing; the payoff
+is in giving the deep-tail monsters a different execution strategy (multi-warp cooperation, or
+heterogeneous CPU/GPU split), the same lesson as the CPU work-stealing fix.
 
 ---
 

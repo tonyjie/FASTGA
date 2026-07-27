@@ -1,0 +1,104 @@
+############ PROFILE 1: discovery forward_sweep_warp ############
+==PROF== Connected to process 2608920 (/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/gpu/wave_bench_gpu)
+==PROF== Profiling "forward_sweep_warp": 0%..
+..50%....100% - 6 passes
+==PROF== Trying to shutdown target application
+==PROF== The application was terminated after profiling all requested kernels.
+[2608920] wave_bench_gpu@127.0.0.1
+  forward_sweep_warp(const unsigned char *, const long *, const unsigned char *, const unsigned char *, const long *, int, const wave_seed *, int *, int *, int *, int *, unsigned long long *, int *, unsigned char *, const short *, const short *, int) (8192, 1, 1)x(32, 1, 1), Context 1, Stream 7, Device 0, CC 8.0
+    Section: Command line profiler metrics
+    ------------------------------------------------------ ------------ ------------
+    Metric Name                                             Metric Unit Metric Value
+    ------------------------------------------------------ ------------ ------------
+    dram__bytes.sum.per_second                             Gbyte/second         1.53
+    gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed            %         0.08
+    l1tex__t_sector_hit_rate.pct                                      %        99.47
+    launch__occupancy_limit_blocks                                block           32
+    launch__occupancy_limit_registers                             block           36
+    launch__occupancy_limit_shared_mem                            block           56
+    launch__occupancy_limit_warps                                 block           64
+    launch__waves_per_multiprocessor                                            2.37
+    lts__t_sector_hit_rate.pct                                        %        98.54
+    sm__throughput.avg.pct_of_peak_sustained_elapsed                  %        32.84
+    sm__warps_active.avg.pct_of_peak_sustained_active                 %        29.26
+    smsp__thread_inst_executed_per_inst_executed.ratio                          4.52
+    ------------------------------------------------------ ------------ ------------
+
+############ PROFILE 2: trace wave_trace_warp @ TR_POOL=512 ############
+==PROF== Connected to process 2609209 (/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/gpu/wave_bench_gpu)
+==PROF== Profiling "wave_trace_warp": 0%
+....50%....100% - 6 passes
+==PROF== Trying to shutdown target application
+==PROF== The application was terminated after profiling all requested kernels.
+[2609209] wave_bench_gpu@127.0.0.1
+  wave_trace_warp(const unsigned char *, const long *, const unsigned char *, const unsigned char *, const long *, int, const wave_seed *, int, int, int *, int *, int *, int *, int *, int *, unsigned short *, int, int *, unsigned long long *, int *, int *, int *, unsigned char *, int *, int *, int *, int *, int *, unsigned short *, const short *, const short *, int) (512, 1, 1)x(32, 1, 1), Context 1, Stream 7, Device 0, CC 8.0
+    Section: Command line profiler metrics
+    ------------------------------------------------------ ------------ ------------
+    Metric Name                                             Metric Unit Metric Value
+    ------------------------------------------------------ ------------ ------------
+    dram__bytes.sum.per_second                             Mbyte/second       268.61
+    gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed            %         0.01
+    l1tex__t_sector_hit_rate.pct                                      %        99.74
+    launch__occupancy_limit_blocks                                block           32
+    launch__occupancy_limit_registers                             block           20
+    launch__occupancy_limit_shared_mem                            block           28
+    launch__occupancy_limit_warps                                 block           64
+    launch__waves_per_multiprocessor                                            0.24
+    lts__t_sector_hit_rate.pct                                        %        99.66
+    sm__throughput.avg.pct_of_peak_sustained_elapsed                  %         6.83
+    sm__warps_active.avg.pct_of_peak_sustained_active                 %         4.96
+    smsp__thread_inst_executed_per_inst_executed.ratio                          3.18
+    ------------------------------------------------------ ------------ ------------
+
+############ PROFILE 3: trace wave_trace_warp @ TR_POOL=2160 ############
+==PROF== Connected to process 2609323 (/work/shared/users/phd/jl4257/Project/genomics-agent/FASTGA/.claude/worktrees/agent-opt/gpu/wave_bench_gpu)
+==PROF== Profiling "wave_trace_warp": 0%
+....50%....100% - 6 passes
+==PROF== Trying to shutdown target application
+==PROF== The application was terminated after profiling all requested kernels.
+[2609323] wave_bench_gpu@127.0.0.1
+  wave_trace_warp(const unsigned char *, const long *, const unsigned char *, const unsigned char *, const long *, int, const wave_seed *, int, int, int *, int *, int *, int *, int *, int *, unsigned short *, int, int *, unsigned long long *, int *, int *, int *, unsigned char *, int *, int *, int *, int *, int *, unsigned short *, const short *, const short *, int) (2160, 1, 1)x(32, 1, 1), Context 1, Stream 7, Device 0, CC 8.0
+    Section: Command line profiler metrics
+    ------------------------------------------------------ ------------ ------------
+    Metric Name                                             Metric Unit Metric Value
+    ------------------------------------------------------ ------------ ------------
+    dram__bytes.sum.per_second                             Mbyte/second       512.28
+    gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed            %         0.03
+    l1tex__t_sector_hit_rate.pct                                      %        99.55
+    launch__occupancy_limit_blocks                                block           32
+    launch__occupancy_limit_registers                             block           20
+    launch__occupancy_limit_shared_mem                            block           28
+    launch__occupancy_limit_warps                                 block           64
+    launch__waves_per_multiprocessor                                               1
+    lts__t_sector_hit_rate.pct                                        %        99.57
+    sm__throughput.avg.pct_of_peak_sustained_elapsed                  %         7.65
+    sm__warps_active.avg.pct_of_peak_sustained_active                 %         8.48
+    smsp__thread_inst_executed_per_inst_executed.ratio                          3.18
+    ------------------------------------------------------ ------------ ------------
+############ DONE ############
+
+############ SOURCE-LEVEL DECOMPOSITION (forward_sweep_warp, full-distribution launch) ############
+Built out-of-tree with -lineinfo; register usage IDENTICAL to committed build (56/40/91), so codegen
+unchanged.  Per-SASS-instruction "Avg. Threads Executed" from ncu --section SourceCounters
+(raw rows in ncu_sass_fwd.csv).  Instructions inside `if (lane == 0)` always execute with exactly
+1 active lane, so this decomposition needs no modelling assumption.
+
+558 SASS instructions   warp-inst 764,394,140,836   thread-inst 3,460,648,794,587
+sum-derived avg active lanes = 4.53   (whole-kernel metric reported 4.52 -> decomposition is complete)
+
+              avg active lanes         warp-inst   % issue       thread-inst   % work
+ EXACTLY 1 (lane-0 serial)      584,462,238,493     76.5%   665,361,073,919    19.2%
+                    >1-4         55,968,644,614      7.3%   240,866,038,811     7.0%
+                    >4-8          3,052,661,784      0.4%    19,713,086,505     0.6%
+                   >8-16         28,556,335,909      3.7%   290,613,167,459     8.4%
+                  >16-24         62,149,296,987      8.1% 1,277,536,610,325    36.9%
+                 >24-<32                     0      0.0%                 0     0.0%
+      EXACTLY 32 (full warp)     30,204,963,049      4.0%   966,558,817,568    27.9%
+
+VERDICT: 76.5% of instruction ISSUE runs on a single lane, producing only 19.2% of the useful work.
+The efficient phase-1 band work (16-32 lanes) is 12.1% of issue but 64.8% of the work.
+The top single-lane instructions by issue count (19.7e9 executions each) decode to phase 2's
+k-descending trim scan -- LDG.E.U8 (Cbuf[idx], unsigned char) + IMAD.WIDE x4 (curV[idx], int) both
+indexed off `idx = k - curbase`.  This CONFIRMS the earlier 77-85% estimate (actual 76.5%) and
+REFUTES the competing hypothesis that the low SIMT efficiency came from phase-1 slide divergence:
+phase-1 work concentrates in the 16-32 lane buckets, not the low ones.
