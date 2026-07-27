@@ -98,3 +98,12 @@ FastGA.cache
 gpu/batch_queue_test
 gpu/genome_resident_test
 gpu/wave_bench_gpu
+gpu/wave_validate
+gpu/extract_deep
+gpu/deep_cpu_bench
+gpu/deep_gpu_bench
+
+# GPU wave study: regenerable benchmark inputs (sources + results are tracked).
+# wave.seeds is rebuilt by extract_seeds from the .1aln; wave.cpuref by wave_bench_cpu.
+gpu/*.seeds
+gpu/*.cpuref
